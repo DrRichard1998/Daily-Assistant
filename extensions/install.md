@@ -22,7 +22,7 @@
 本扩展负责：
 
 1. 确认便携包内部文件已放在目标运行根目录；
-2. 检查 `run.cmd`、`assistant.py`、`schema.sql`、`extensions/`、`data/` 和 `runtime/`；
+2. 检查 `run.cmd`、`assistant.py`、`schema.sql`、`extensions/` 和 `runtime/`，并在初始化时创建或检查 `data/`；
 3. 执行 `.\run.cmd doctor`、`init`、`--help` 和最小可用测试；
 4. 处理便携包文件缺失、运行目录错误、数据库不可写、中文编码和查询验证中的常见问题；
 5. 常规分支失败时继续主动排查，直到项目可用或明确阻塞。
@@ -64,7 +64,6 @@
   schema.sql
   AGENTS.md
   README.md
-  data/
   extensions/
     catalog.md
     init.md
@@ -75,12 +74,14 @@
       python.exe
 ```
 
+发布包默认不包含 `data/` 目录，也不包含 `data/assistant.sqlite`。`data/` 和本地数据库由 `.\run.cmd init` 在安装目录内创建。
+
 普通用户只需要：
 
 1. Windows PowerShell 或 Windows 命令行；
 2. 完整的 DailyAssistant 便携包内部文件；
 3. 这些文件位于同一个目标运行根目录；
-4. 当前目录具备写入权限，至少能写入 `data/assistant.sqlite`。
+4. 当前目录具备写入权限，至少能创建 `data/` 并写入 `data/assistant.sqlite`。
 
 `assistant.py` 仍是唯一写库入口。不要手工编辑 `data/assistant.sqlite`。
 

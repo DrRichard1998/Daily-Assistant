@@ -63,19 +63,15 @@ DailyAssistant 是一个本地运行的任务和日程助手。它使用 LLM 理
 
 - Windows PowerShell
 - 完整的 DailyAssistant 运行根目录
-- 可写的 `data/` 目录
+- 可写的安装目录；初始化时会创建本地数据库
 
 运行所需组件已随便携包提供；用户只需保留便携包内文件并在运行根目录中使用 `run.cmd`。
 
 ## 安装与初始化
 
-便携包内容目录是：
+推荐安装方式是直接下载 GitHub Release 中的 `DailyAssistantPortable-3.0.0.zip`，并把压缩包内容解压到目标运行根目录。AI 或 Codex 等自动工具安装本项目时，也推荐使用 Release 便携包；下载并解压后，直接读取并执行 `extensions/install.md` 中的安装流程。
 
-```text
-dist/DailyAssistantPortable/
-```
-
-安装本项目时，只需要保留便携包内容目录里的文件，并把这些文件放在目标运行根目录下。目标根目录下必须直接包含 `run.cmd`、`assistant.py`、`schema.sql`、`AGENTS.md`、`extensions/`、`runtime/` 和 `data/`；不要在运行根目录下再套一层 `DailyAssistantPortable` 子目录。
+目标运行根目录必须直接包含 `run.cmd`、`assistant.py`、`schema.sql`、`AGENTS.md`、`extensions/` 和 `runtime/`；发布包默认不包含 `data/`，初始化时会创建本地数据库。不要在运行根目录下再套一层 `DailyAssistantPortable` 子目录。
 
 安装后的根目录结构应类似：
 
@@ -85,7 +81,6 @@ DailyAssistant/
 |-- assistant.py
 |-- schema.sql
 |-- AGENTS.md
-|-- data/
 |-- extensions/
 `-- runtime/
 ```
@@ -98,26 +93,7 @@ DailyAssistant/
 .\run.cmd --help
 ```
 
-需要重新生成便携包时，在源码目录运行：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build_portable.ps1
-```
-
-默认不会复制当前项目的私人数据库，也不会在便携包中内置 `data/assistant.sqlite`；用户安装后运行 `.\run.cmd init` 时会创建本地数据库。如果明确需要把当前数据库一起打包，可运行：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build_portable.ps1 -IncludeDatabase
-```
-
-生成后可验证：
-
-```powershell
-.\dist\DailyAssistantPortable\run.cmd doctor
-.\dist\DailyAssistantPortable\run.cmd --version
-```
-
-发布或安装时，复制的是 `dist\DailyAssistantPortable\` 内部内容；复制后的目标目录就是 DailyAssistant 的运行根目录。
+默认不会复制当前项目的私人数据库，也不会在便携包中内置 `data/assistant.sqlite`；用户安装后运行 `.\run.cmd init` 时会创建本地数据库。
 
 初始化成功后，数据库会位于：
 
