@@ -88,7 +88,7 @@
 
 安装和验证必须按以下顺序推进：
 
-1. 确认当前位置是项目根目录；
+1. 确认当前位置是项目根目录，并确认核心文件实际位于根目录；
 2. 确定可用的 Python 调用方式，并设置 `$DA_PY` 和 `$DA_PY_ARGS`；
 3. 运行 `& $DA_PY @DA_PY_ARGS .\assistant.py doctor`；
 4. 按 `doctor` 结果修复环境；
@@ -117,16 +117,48 @@
 
 ## 6. 环境检查
 
-### 6.1 确认项目根目录
+### 6.1 确认项目根目录和核心文件位置
 
-当前目录必须同时包含：
+安装前必须先确认当前目录是 DailyAssistant 项目根目录，并且核心文件没有被放进错误的子目录。项目根目录必须满足：
 
-1. `assistant.py`；
-2. `schema.sql`；
-3. `extensions/`；
-4. `data/` 或允许创建 `data/`。
+1. 根目录直接包含 `assistant.py`；
+2. 根目录直接包含 `schema.sql`；
+3. 根目录直接包含 `AGENTS.md`；
+4. 根目录直接包含 `extensions/`；
+5. `extensions/install.md` 位于根目录下的 `extensions/` 中；
+6. `data/` 位于根目录下，或当前用户允许在根目录下创建 `data/`；
+7. 初始化后的数据库必须位于根目录下的 `data/assistant.sqlite`。
 
-如果返回找不到 `assistant.py`、找不到 `schema.sql`、找不到 `extensions/install.md`，通常说明当前目录不对。此时应回到项目根目录后重跑命令，不要在父目录、下载目录、桌面或其他项目目录里初始化数据库。
+在项目根目录运行以下检查：
+
+```powershell
+$requiredRootFiles = @("assistant.py", "schema.sql", "AGENTS.md")
+$requiredRootDirs = @("extensions")
+
+foreach ($file in $requiredRootFiles) {
+  if (-not (Test-Path -LiteralPath ".\$file" -PathType Leaf)) {
+    Write-Output "missing-root-file: $file"
+  }
+}
+
+foreach ($dir in $requiredRootDirs) {
+  if (-not (Test-Path -LiteralPath ".\$dir" -PathType Container)) {
+    Write-Output "missing-root-dir: $dir"
+  }
+}
+
+if (-not (Test-Path -LiteralPath ".\extensions\install.md" -PathType Leaf)) {
+  Write-Output "missing-extension-file: extensions/install.md"
+}
+```
+
+处理规则：
+
+1. 如果当前目录不是项目根目录，但能明确找到包含 `assistant.py`、`schema.sql`、`AGENTS.md` 和 `extensions/install.md` 的目录，应先切换到该目录后重跑检查。
+2. 如果某个核心文件存在于当前工作区内的错误子目录，并且只有一份、文件名无冲突、目标根目录位置不存在同名文件，可以把它移动回根目录或正确的 `extensions/` 位置，再重跑检查。
+3. 如果存在多份同名核心文件、目标位置已有同名文件、来源路径不明确，或文件位于当前工作区外，不要猜测，也不要覆盖；只问用户一个最小确认问题。
+4. 如果核心文件确实缺失，不要临时创建空的 `assistant.py`、`schema.sql`、`AGENTS.md` 或 `extensions/install.md` 代替，应恢复或重新获取项目文件。
+5. 不要在父目录、下载目录、桌面或其他项目目录里初始化数据库。
 
 ### 6.2 确定 Python 调用方式
 

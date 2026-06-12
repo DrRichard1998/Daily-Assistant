@@ -253,6 +253,7 @@ extensions/catalog.md
 - `review --status dismissed` 用于标记误判、历史遗留或无需处理的待确认项。
 - `review --status open` 用于重新打开误关的待确认项，并清空 `resolved_at`。
 - `query --type reviews` 不带日期参数时查询整个待确认队列；显式传入日期或范围时，按 `review_queue.created_at` 过滤。
+- `extensions/install.md` 强化安装前的项目根目录检查，要求核心文件位于根目录或正确的 `extensions/` 位置；发现错放文件时按安全规则修正或要求用户确认。
 
 ### 2.0.0
 
