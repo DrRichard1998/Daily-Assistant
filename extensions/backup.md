@@ -62,7 +62,7 @@ manifest.json
 `items-backup.txt` 必须由以下命令生成，不得手写：
 
 ```powershell
-python .\assistant.py export-items-backup --output .\backup\.work-backup-YYYYMMDD-HHMMSS\items-backup.txt
+.\run.cmd export-items-backup --output .\backup\.work-backup-YYYYMMDD-HHMMSS\items-backup.txt
 ```
 
 `manifest.json` 至少包含：
@@ -87,7 +87,7 @@ python .\assistant.py export-items-backup --output .\backup\.work-backup-YYYYMMD
 
 其中：
 
-1. `app_version` 必须取自 `python .\assistant.py --version` 返回的 DailyAssistant 版本号；
+1. `app_version` 必须取自 `.\run.cmd --version` 返回的 DailyAssistant 版本号；
 2. `items_backup_version` 必须取自刚生成的 `items-backup.txt` 内嵌 JSON 元数据；
 3. 如果任一版本号无法读取，应停止备份并报告错误。
 
@@ -128,7 +128,7 @@ backup/pre-restore-20260612-154200.bak
 2. 创建 `backup/` 文件夹。
 3. 在 `backup/` 下创建临时工作目录，例如 `backup/.work-backup-YYYYMMDD-HHMMSS/`。
 4. 复制 `data/assistant.sqlite` 到临时目录的 `data/assistant.sqlite`。
-5. 运行 `python .\assistant.py export-items-backup --output 临时目录\items-backup.txt`。
+5. 运行 `.\run.cmd export-items-backup --output 临时目录\items-backup.txt`。
 6. 写入 `manifest.json`。
 7. 先压缩成 `.zip` 文件，再改名为 `.bak`。
 8. 删除临时工作目录和中间 `.zip` 文件。
@@ -147,8 +147,8 @@ New-Item -ItemType Directory -Path $work -Force
 New-Item -ItemType Directory -Path (Join-Path $work "data") -Force
 Copy-Item .\data\assistant.sqlite (Join-Path $work "data\assistant.sqlite") -Force
 $itemsBackup = Join-Path $work "items-backup.txt"
-python .\assistant.py export-items-backup --output $itemsBackup
-$appVersion = (python .\assistant.py --version) -replace "^DailyAssistant\s+", ""
+.\run.cmd export-items-backup --output $itemsBackup
+$appVersion = (.\run.cmd --version) -replace "^DailyAssistant\s+", ""
 if (-not $appVersion) {
   throw "无法从 assistant.py 读取应用版本号"
 }
@@ -238,21 +238,21 @@ backup/pre-restore-YYYYMMDD-HHMMSS.bak
 4. 按第 8 节校验备份内容。
 5. 创建恢复前保护备份。
 6. 优先复制备份中的 `data/assistant.sqlite` 覆盖当前数据库。
-7. 运行 `python .\assistant.py doctor` 确认项目基础环境可用。
+7. 运行 `.\run.cmd doctor` 确认项目基础环境可用。
 8. 如果数据库恢复成功且存在 `items-backup.txt`，运行：
 
 ```powershell
-python .\assistant.py verify-items-backup --file .\backup\.work-restore-YYYYMMDD-HHMMSS\items-backup.txt
+.\run.cmd verify-items-backup --file .\backup\.work-restore-YYYYMMDD-HHMMSS\items-backup.txt
 ```
 
 9. 如果校验通过，恢复完成。
 10. 如果数据库复制、打开或校验失败，且存在 `items-backup.txt`，先确保当前数据库已初始化，再运行：
 
 ```powershell
-python .\assistant.py restore-items-backup --file .\backup\.work-restore-YYYYMMDD-HHMMSS\items-backup.txt
+.\run.cmd restore-items-backup --file .\backup\.work-restore-YYYYMMDD-HHMMSS\items-backup.txt
 ```
 
-11. 文本重建完成后，再运行 `python .\assistant.py verify-items-backup --file ...\items-backup.txt` 校验。
+11. 文本重建完成后，再运行 `.\run.cmd verify-items-backup --file ...\items-backup.txt` 校验。
 12. 删除恢复临时目录和临时 `.zip`。
 13. 回复恢复方式、保护备份路径和验证结果。
 
@@ -261,7 +261,7 @@ python .\assistant.py restore-items-backup --file .\backup\.work-restore-YYYYMMD
 `items-backup.txt` 与数据库校验必须使用：
 
 ```powershell
-python .\assistant.py verify-items-backup --file 路径\items-backup.txt
+.\run.cmd verify-items-backup --file 路径\items-backup.txt
 ```
 
 如果命令返回 `status = "ok"`，表示数据库与文本副本一致。

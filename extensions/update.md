@@ -201,7 +201,7 @@ manifest.json
 `items-backup.txt` 必须由当前版本程序导出，不得手写：
 
 ```powershell
-python .\assistant.py export-items-backup --output .\backup\items-backup-pre-update-YYYYMMDD-HHMMSS.txt
+.\run.cmd export-items-backup --output .\backup\items-backup-pre-update-YYYYMMDD-HHMMSS.txt
 ```
 
 导出后必须确认命令返回 `status = "ok"`，并记录返回的 `checksum` 和 `summary`。
@@ -296,11 +296,11 @@ backup/.work-update-YYYYMMDD-HHMMSS/new-project/backup/items-backup-pre-update-Y
 然后在新项目目录中运行：
 
 ```powershell
-python .\assistant.py init
-python .\assistant.py restore-items-backup --file .\backup\items-backup-pre-update-YYYYMMDD-HHMMSS.txt
-python .\assistant.py verify-items-backup --file .\backup\items-backup-pre-update-YYYYMMDD-HHMMSS.txt
-python .\assistant.py doctor
-python .\assistant.py query --period today
+.\run.cmd init
+.\run.cmd restore-items-backup --file .\backup\items-backup-pre-update-YYYYMMDD-HHMMSS.txt
+.\run.cmd verify-items-backup --file .\backup\items-backup-pre-update-YYYYMMDD-HHMMSS.txt
+.\run.cmd doctor
+.\run.cmd query --period today
 ```
 
 通过条件：
@@ -342,10 +342,10 @@ data/assistant.sqlite
 
 ```powershell
 python -m py_compile .\assistant.py
-python .\assistant.py doctor
-python .\assistant.py --help
-python .\assistant.py verify-items-backup --file .\backup\items-backup-pre-update-YYYYMMDD-HHMMSS.txt
-python .\assistant.py query --period today
+.\run.cmd doctor
+.\run.cmd --help
+.\run.cmd verify-items-backup --file .\backup\items-backup-pre-update-YYYYMMDD-HHMMSS.txt
+.\run.cmd query --period today
 ```
 
 通过条件：

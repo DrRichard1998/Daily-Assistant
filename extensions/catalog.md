@@ -12,7 +12,7 @@
 
 触发场景：
 
-- `assistant.py` 返回 `needs_init`。
+- `.\run.cmd` 返回 `needs_init`。
 - 用户表示首次启用、开始使用、初始化数据库或启用本项目。
 - 用户询问数据库不存在、项目还不能记录或无法查询的原因。
 
@@ -20,13 +20,13 @@
 
 文件：`install.md`
 
-功能：检查和配置本地运行环境，选择可用 Python 调用方式，并用最小案例验证项目可用。
+功能：基于 DailyAssistant 便携包安装本项目，检查运行根目录，初始化本地数据库，并用最小案例验证项目可用。
 
 触发场景：
 
-- 用户要求安装、配置环境、检查环境或排查运行问题。
-- `assistant.py doctor` 返回 `environment_error`。
-- `assistant.py` 因 Python 命令不可用、解释器路径、权限或依赖问题无法启动。
+- 用户要求基于便携包安装本项目、初始化、检查便携包、检查运行目录或排查运行问题。
+- `.\run.cmd doctor` 返回 `environment_error`。
+- `.\run.cmd` 因便携运行时缺失、权限或依赖问题无法启动。
 
 ## `daily-work`
 

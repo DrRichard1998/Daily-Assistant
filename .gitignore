@@ -11,3 +11,6 @@ Reports/
 
 data/*.sqlite
 data/*.sqlite-*
+
+download/
+dist/

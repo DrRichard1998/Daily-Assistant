@@ -2,25 +2,29 @@
 
 ## 1. 目的
 
-本扩展用于把 DailyAssistant 的本地 SQLite 版本安装、初始化并验证到可用状态。
+本扩展用于基于 DailyAssistant 便携包安装本项目：检查运行根目录，初始化本地数据库，并验证项目可用。
 
-最终目标不是解释安装概念，而是完成以下闭环：
+主版本是便携包版本：日常用户通过 `.\run.cmd` 运行项目。安装本项目时，只需要保留便携包内容目录里的文件，并把这些文件放在目标运行根目录下。
 
-1. 确认运行环境可用；
-2. 初始化 `data/assistant.sqlite`；
-3. 验证 CLI 可正常执行；
-4. 验证中文记录可写入；
-5. 验证任务、日程和待确认查询可用；
-6. 遇到问题时主动排查并尽量修复。
+最终目标不是解释安装概念，而是把便携包安装到可用状态：
+
+1. 确认当前目录是 DailyAssistant 运行根目录；
+2. 确认便携包内部文件直接位于该根目录；
+3. 确认 `.\run.cmd` 可用；
+4. 初始化 `data/assistant.sqlite`；
+5. 验证 CLI 可正常执行；
+6. 验证中文记录可写入；
+7. 验证任务、日程和待确认查询可用；
+8. 遇到问题时主动排查并尽量修复。
 
 ## 2. 职责边界
 
 本扩展负责：
 
-1. 检查 Python、pip、SQLite 标准库、PATH 和项目目录权限；
-2. 指导安装或修复必要的本机运行环境；
-3. 执行 `assistant.py doctor`、`init`、`--help` 和最小可用测试；
-4. 处理安装、初始化、权限、编码和查询验证中的常见问题；
+1. 确认便携包内部文件已放在目标运行根目录；
+2. 检查 `run.cmd`、`assistant.py`、`schema.sql`、`extensions/`、`data/` 和 `runtime/`；
+3. 执行 `.\run.cmd doctor`、`init`、`--help` 和最小可用测试；
+4. 处理便携包文件缺失、运行目录错误、数据库不可写、中文编码和查询验证中的常见问题；
 5. 常规分支失败时继续主动排查，直到项目可用或明确阻塞。
 
 本扩展不负责：
@@ -29,111 +33,93 @@
 2. 物理删除或重置数据库；
 3. 手工编辑 `data/assistant.sqlite`；
 4. 把数据库迁移到工作区外路径；
-5. 安装与本项目无关的外部集成；
+5. 安装与 DailyAssistant 便携包无关的外部集成；
 6. 在没有用户明确要求时修改 `assistant.py`、`AGENTS.md` 或 `schema.sql`。
 
 ## 3. 触发条件
 
 当用户表达以下意图时使用本扩展：
 
-1. 初始化或配置本项目；
-2. 检查或配置项目运行环境；
-3. 询问需要安装什么依赖；
-4. 遇到 Python、pip、SQLite、中文编码、数据库只读等运行问题；
-5. 要求做一个最小可用测试；
-6. 已经通过 `extensions/init.md` 确认开始使用本项目。
+1. 用户要求基于便携包安装本项目；
+2. 用户要求初始化本项目；
+3. 用户要求检查便携包；
+4. 用户要求检查运行目录；
+5. 用户要求排查运行问题；
+6. 遇到 `run.cmd`、便携运行时、SQLite、中文编码、数据库只读等运行问题；
+7. 要求做一个最小可用测试；
+8. 已经通过 `extensions/init.md` 确认开始使用本项目。
 
 ## 4. 基本事实
 
-### 4.1 运行环境
+### 4.1 运行根目录
 
-本项目是本地 SQLite 版本。项目运行时代码只依赖 Python 标准库，但新电脑可能需要先联网安装或修复 Python、pip 和 PATH。
+运行根目录必须直接包含便携包内部文件。不要在运行根目录下再套一层 `DailyAssistantPortable` 子目录。
 
-必需环境：
-
-1. Windows PowerShell；
-2. Python 3.10 或更高版本；
-3. pip 可用；
-4. Python 标准库中的 `sqlite3`、`json`、`argparse`、`base64`、`pathlib` 等模块可用；
-5. 当前项目目录具备写入权限，至少能写入 `data/assistant.sqlite`。
-
-项目自身不要求：
-
-1. 不要求安装第三方 Python 包；
-2. 不要求单独安装 SQLite 命令行工具；
-3. 不要求 Node.js；
-4. 不要求 MCP。
-
-如果当前电脑缺少 Python、pip 或 Python 标准库不可用，应联网帮助用户安装或修复环境，不能简单回答“无需联网”。
-
-### 4.2 核心文件
+运行根目录必须直接包含：
 
 ```text
 ./
+  run.cmd
   assistant.py
   schema.sql
   AGENTS.md
+  README.md
   data/
-    assistant.sqlite
   extensions/
     catalog.md
     init.md
     install.md
     daily-work.md
+  runtime/
+    python/
+      python.exe
 ```
 
-`assistant.py` 是唯一写库入口。不要手工编辑 `data/assistant.sqlite`。
+普通用户只需要：
+
+1. Windows PowerShell 或 Windows 命令行；
+2. 完整的 DailyAssistant 便携包内部文件；
+3. 这些文件位于同一个目标运行根目录；
+4. 当前目录具备写入权限，至少能写入 `data/assistant.sqlite`。
+
+`assistant.py` 仍是唯一写库入口。不要手工编辑 `data/assistant.sqlite`。
+
+### 4.2 便携包缺失处理
+
+如果 `run.cmd`、`runtime\python\python.exe`、`assistant.py`、`schema.sql` 或 `extensions/` 缺失，说明当前目录不是完整运行根目录。
+
+处理规则：
+
+1. 如果当前目录下只有一个 `DailyAssistantPortable` 子目录，并且核心文件位于该子目录内，应进入该子目录或把该子目录内的文件移动到目标运行根目录。
+2. 如果用户拿到的是不完整便携包，应重新复制或重新获取完整便携包。
+3. 不要通过安装其他系统组件来规避便携包缺失问题。
+4. 不要临时创建空的 `assistant.py`、`schema.sql`、`AGENTS.md` 或 `extensions/install.md` 代替缺失文件。
 
 ## 5. 总体执行顺序
 
-安装和验证必须按以下顺序推进：
+基于便携包安装和验证必须按以下顺序推进：
 
-1. 确认当前位置是项目根目录，并确认核心文件实际位于根目录；
-2. 确定可用的 Python 调用方式，并设置 `$DA_PY` 和 `$DA_PY_ARGS`；
-3. 运行 `& $DA_PY @DA_PY_ARGS .\assistant.py doctor`；
-4. 按 `doctor` 结果修复环境；
-5. 运行 `& $DA_PY @DA_PY_ARGS .\assistant.py --help` 确认 CLI 可用；
-6. 运行 `& $DA_PY @DA_PY_ARGS .\assistant.py init` 初始化或升级数据库；
+1. 确认当前位置是 DailyAssistant 运行根目录；
+2. 确认便携包内部文件直接位于该根目录；
+3. 确认 `data/` 可写或可由初始化流程创建；
+4. 运行 `.\run.cmd doctor` 检查基础状态；
+5. 运行 `.\run.cmd --help` 确认 CLI 可用；
+6. 运行 `.\run.cmd init` 初始化或升级数据库；
 7. 使用 UTF-8 base64 写入一条最小中文案例；
 8. 运行查询命令确认写入结果可读；
 9. 对照第 10 节最小可用标准给出结论。
 
 如果任何一步失败，进入第 9 节排错流程。排错完成后回到失败步骤继续执行，不要跳到后续步骤。
 
-### 5.1 日常使用免排查要求
-
-`AGENTS.md` 中的记录、查询、完成和取消路径默认使用 `python .\assistant.py ...`。因此安装完成的目标不只是找到某个可用解释器，而是让新电脑在项目根目录中可以直接运行裸 `python` 命令。
-
-安装阶段必须主动完成以下检查：
-
-1. `python --version` 能返回 Python 3.10 或更高版本；
-2. `python .\assistant.py doctor` 返回 `status: ok`；
-3. `python .\assistant.py --help` 能列出核心命令；
-4. 第 8.1 节的最小中文写入测试可以改用裸 `python .\assistant.py apply-json --base64 $b64` 成功执行。
-
-如果只能通过 `$DA_PY` / `$DA_PY_ARGS`、`py -3` 或完整 `python.exe` 路径运行项目，而裸 `python` 不可用，则环境只算临时可运行，不算完成安装。此时不要进入业务记录流程，应继续按第 9.1 节修复 PATH、Python Launcher 或官方 Python 安装，直到裸 `python` 可用。
-
-只有在用户明确接受长期使用自定义解释器调用方式时，才可以保留 `$DA_PY` / `$DA_PY_ARGS` 方案。此时必须同步修改日常工作规则中的命令写法，否则下次记录日程仍会先尝试裸 `python` 并触发排查流程。
-
 ## 6. 环境检查
 
-### 6.1 确认项目根目录和核心文件位置
+### 6.1 确认目录和核心文件
 
-安装前必须先确认当前目录是 DailyAssistant 项目根目录，并且核心文件没有被放进错误的子目录。项目根目录必须满足：
-
-1. 根目录直接包含 `assistant.py`；
-2. 根目录直接包含 `schema.sql`；
-3. 根目录直接包含 `AGENTS.md`；
-4. 根目录直接包含 `extensions/`；
-5. `extensions/install.md` 位于根目录下的 `extensions/` 中；
-6. `data/` 位于根目录下，或当前用户允许在根目录下创建 `data/`；
-7. 初始化后的数据库必须位于根目录下的 `data/assistant.sqlite`。
-
-在项目根目录运行以下检查：
+在目标运行根目录运行以下检查：
 
 ```powershell
-$requiredRootFiles = @("assistant.py", "schema.sql", "AGENTS.md")
-$requiredRootDirs = @("extensions")
+$requiredRootFiles = @("run.cmd", "assistant.py", "schema.sql", "AGENTS.md")
+$requiredRootDirs = @("extensions", "runtime")
 
 foreach ($file in $requiredRootFiles) {
   if (-not (Test-Path -LiteralPath ".\$file" -PathType Leaf)) {
@@ -150,86 +136,44 @@ foreach ($dir in $requiredRootDirs) {
 if (-not (Test-Path -LiteralPath ".\extensions\install.md" -PathType Leaf)) {
   Write-Output "missing-extension-file: extensions/install.md"
 }
+
+if (-not (Test-Path -LiteralPath ".\runtime\python\python.exe" -PathType Leaf)) {
+  Write-Output "missing-runtime: runtime\python\python.exe"
+}
 ```
 
 处理规则：
 
-1. 如果当前目录不是项目根目录，但能明确找到包含 `assistant.py`、`schema.sql`、`AGENTS.md` 和 `extensions/install.md` 的目录，应先切换到该目录后重跑检查。
-2. 如果某个核心文件存在于当前工作区内的错误子目录，并且只有一份、文件名无冲突、目标根目录位置不存在同名文件，可以把它移动回根目录或正确的 `extensions/` 位置，再重跑检查。
+1. 如果当前目录不是运行根目录，但能明确找到包含 `run.cmd`、`assistant.py`、`schema.sql`、`AGENTS.md` 和 `extensions/install.md` 的目录，应先切换到该目录后重跑检查。
+2. 如果当前目录下只有一个 `DailyAssistantPortable` 子目录，并且核心文件位于该子目录内，应进入该子目录或把该子目录内的文件移动到目标运行根目录；不要在错误的外层目录初始化数据库。
 3. 如果存在多份同名核心文件、目标位置已有同名文件、来源路径不明确，或文件位于当前工作区外，不要猜测，也不要覆盖；只问用户一个最小确认问题。
-4. 如果核心文件确实缺失，不要临时创建空的 `assistant.py`、`schema.sql`、`AGENTS.md` 或 `extensions/install.md` 代替，应恢复或重新获取项目文件。
+4. 如果核心文件确实缺失，应恢复或重新获取完整便携包。
 5. 不要在父目录、下载目录、桌面或其他项目目录里初始化数据库。
 
-### 6.2 确定 Python 调用方式
+### 6.2 确认 CLI
 
-新电脑或新终端中，`python` 不在 PATH 并不表示数据库不存在，也不表示项目需要初始化。必须先确定可用解释器，再运行 `assistant.py`。
-
-在项目根目录运行：
+在目标运行根目录运行：
 
 ```powershell
-$DA_PY = $null
-$DA_PY_ARGS = @()
-
-$pythonCmd = Get-Command python -ErrorAction SilentlyContinue
-if ($pythonCmd) {
-  & $pythonCmd.Source --version
-  if ($LASTEXITCODE -eq 0) {
-    $DA_PY = $pythonCmd.Source
-  }
-}
-
-if (-not $DA_PY) {
-  $pyCmd = Get-Command py -ErrorAction SilentlyContinue
-  if ($pyCmd) {
-    & $pyCmd.Source -3 --version
-    if ($LASTEXITCODE -eq 0) {
-      $DA_PY = $pyCmd.Source
-      $DA_PY_ARGS = @("-3")
-    }
-  }
-}
-```
-
-如果用户或终端已经提供了完整解释器路径，例如 `C:\Python310\python.exe` 或用户目录下的 `python.exe`，可以直接设置：
-
-```powershell
-$DA_PY = "C:\Python310\python.exe"
-$DA_PY_ARGS = @()
-& $DA_PY --version
-```
-
-判断规则：
-
-1. `$DA_PY` 有值且 `& $DA_PY @DA_PY_ARGS --version` 能返回 Python 3.10 或更高版本，继续第 6.3 节；
-2. `python` 命令找不到时，不进入数据库初始化说明，不展示“数据库不存在”的文案；如果目标是完成新电脑安装，还必须在第 9.1 节修复到裸 `python` 可用；
-3. `py -3` 可用但 `python` 不可用时，后续所有命令都使用 `& $DA_PY @DA_PY_ARGS ...`，不要临时改回裸 `python`；
-4. 只有找不到任何 Python 3.10 或更高版本解释器时，才进入第 9.1 节安装或修复 Python；
-5. 在沙箱环境中执行工作区外的完整 `python.exe` 如果被权限系统拦截，应按工具提示请求授权执行该本机 Python，不要改为初始化数据库。
-
-### 6.3 运行 doctor
-
-在项目根目录运行：
-
-```powershell
-& $DA_PY @DA_PY_ARGS .\assistant.py doctor
+.\run.cmd doctor
 ```
 
 根据返回结果处理：
 
-1. `status: ok`：环境检查通过，进入第 7 节；
+1. `status: ok`：基础检查通过，进入第 7 节；
 2. `status: environment_error`：按 `checks` 中失败项进入第 9 节；
-3. `checks.database.exists`：只表示数据库文件是否已存在，不影响环境检查本身；
-4. 如果这条命令自身无法运行，先回到第 6.2 节重新确认 `$DA_PY`，再进入第 9.1 节检查 Python 和 PATH；
-5. 只有 `assistant.py` 已经成功启动并明确返回 `status: needs_init`，才按数据库缺失处理。
+3. `checks.database.exists`：只表示数据库文件是否已存在，不影响基础检查本身；
+4. 如果这条命令自身无法运行，先回到第 6.1 节确认 `run.cmd` 与便携运行时，再进入第 9 节排查；
+5. 只有 `assistant.py` 已经通过 `run.cmd` 成功启动并明确返回 `status: needs_init`，才按数据库缺失处理。
 
 ## 7. 初始化与 CLI 验证
 
 ### 7.1 确认 CLI 命令可用
 
-环境检查通过后，运行：
+基础检查通过后，运行：
 
 ```powershell
-& $DA_PY @DA_PY_ARGS .\assistant.py --help
+.\run.cmd --help
 ```
 
 预期能列出 `doctor`、`init`、`apply-json`、`query`、`complete`、`cancel` 等命令。
@@ -245,10 +189,10 @@ $DA_PY_ARGS = @()
 
 初始化不是每次会话都要执行的命令。
 
-在项目根目录运行：
+在目标运行根目录运行：
 
 ```powershell
-& $DA_PY @DA_PY_ARGS .\assistant.py init
+.\run.cmd init
 ```
 
 预期结果：
@@ -325,7 +269,7 @@ $json = @'
 }
 '@
 $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
-& $DA_PY @DA_PY_ARGS .\assistant.py apply-json --base64 $b64
+.\run.cmd apply-json --base64 $b64
 ```
 
 预期结果：
@@ -336,138 +280,74 @@ $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
 
 看到 `verification.read_after_write: true` 后，不需要再手动查库验证同一次写入。
 
+注意验证成功安装后，需要删除或取消掉用于验证的条目。
+
 ### 8.2 查询验证
 
 查看指定日期：
 
 ```powershell
-& $DA_PY @DA_PY_ARGS .\assistant.py query --date 2026-06-13
+.\run.cmd query --date 2026-06-13
 ```
 
 查看活跃任务：
 
 ```powershell
-& $DA_PY @DA_PY_ARGS .\assistant.py query --type task --status active
+.\run.cmd query --type task --status active
 ```
 
 查看待确认队列：
 
 ```powershell
-& $DA_PY @DA_PY_ARGS .\assistant.py query --type reviews --status active
+.\run.cmd query --type reviews --status active
 ```
-
-注意验证成功安装后，需要删除掉用于验证的条目。
 
 ## 9. 排错流程
 
 排错时必须先读取具体错误文本，再选择对应分支。不要在没有定位原因时反复运行同一条失败命令。
 
-### 9.1 Python 或 PATH 不可用
+### 9.1 `run.cmd` 不存在或不能启动
 
-如果 `python` 命令不可用，或 `& $DA_PY @DA_PY_ARGS .\assistant.py doctor` 自身无法运行，先回到第 6.2 节确认是否已有可用解释器。不要把这种错误解释为数据库不存在。
+如果目标目录缺少 `run.cmd`：
 
-优先检查 Windows Python Launcher：
+1. 先确认是否在正确目录；
+2. 如果当前目录下只有一个 `DailyAssistantPortable` 子目录，并且其中存在 `run.cmd`，应进入该子目录或把其内部文件移动到目标运行根目录；
+3. 如果找不到 `run.cmd`，说明便携包不完整，应重新复制或重新获取完整便携包。
 
-```powershell
-py -0p
-py -3 --version
-```
+如果 `run.cmd` 存在但不能启动：
 
-如果 `py -3 --version` 返回 Python 3.10 或更高版本，设置：
+1. 读取命令输出；
+2. 确认 `assistant.py` 是否存在；
+3. 确认 `runtime\python\python.exe` 是否存在；
+4. 如果缺少核心文件或运行时目录，说明便携包不完整，应重新复制或重新获取完整便携包；
+5. 不要通过安装其他系统组件来规避便携包缺失问题。
 
-```powershell
-$DA_PY = (Get-Command py).Source
-$DA_PY_ARGS = @("-3")
-& $DA_PY @DA_PY_ARGS .\assistant.py doctor
-```
+### 9.2 便携运行时异常
 
-如果用户、终端或系统错误信息提供了完整解释器路径，先验证该路径：
+如果 `doctor` 显示运行时相关检查项失败：
 
-```powershell
-$DA_PY = "C:\Python310\python.exe"
-$DA_PY_ARGS = @()
-& $DA_PY --version
-& $DA_PY .\assistant.py doctor
-```
+1. 优先判断便携包是否被手工删改、杀毒隔离或复制不完整；
+2. 重新复制或重新获取完整便携包；
+3. 如果仍失败，报告 `doctor` 返回的具体失败项；
+4. 不要把安装其他系统组件当作便携包的修复方案。
 
-如果找不到任何 Python 3.10 或更高版本解释器，才联网安装 Python：
+### 9.3 schema 文件异常
 
-```powershell
-winget install --id Python.Python.3.12 -e
-```
-
-安装后重新打开 PowerShell，回到项目目录，再运行：
-
-```powershell
-python --version
-py -3 --version
-```
-
-如果刚安装 Python 后 `python --version` 仍不可用，先不要重复安装，也不要初始化数据库。优先处理 PATH 或 launcher 问题：
-
-1. 关闭当前 PowerShell，重新打开一个新的 PowerShell；
-2. 回到项目目录；
-3. 再执行第 6.2 节的 `$DA_PY` 选择流程；
-4. 如果 `py -3` 可用但 `python` 不可用，只能作为临时排查手段使用；新电脑安装完成前仍应修复 PATH，让 `python` 可用；
-5. 如果必须让裸 `python` 可用，再使用官方 Python 安装器修复 PATH，或重新安装并勾选添加到 PATH。
-
-### 9.2 pip 不可用
-
-如果 `doctor` 显示 `checks.pip.ok = false`，先尝试：
-
-```powershell
-& $DA_PY @DA_PY_ARGS -m ensurepip --upgrade
-& $DA_PY @DA_PY_ARGS -m pip --version
-```
-
-如果仍失败，应联网查找当前 Windows/Python 版本对应的修复方式，或重新安装官方 Python，并确保 PATH 正确。
-
-### 9.3 sqlite3 标准库不可用
-
-如果 `doctor` 显示 `checks.sqlite3.ok = false`，说明当前 Python 安装不完整。应重新安装官方 Python，再重新验证：
-
-```powershell
-& $DA_PY @DA_PY_ARGS .\assistant.py doctor
-```
-
-### 9.4 schema 文件异常
-
-如果 `doctor` 显示 `checks.schema.ok = false`，说明项目文件不完整，应恢复或重新获取项目文件。
+如果 `doctor` 显示 `checks.schema.ok = false`，说明项目文件不完整，应恢复或重新获取完整便携包。
 
 不要临时创建空的 `schema.sql`，也不要猜测表结构。
 
-### 9.5 数据目录或数据库不可写
+### 9.4 数据目录或数据库不可写
 
 如果 `doctor` 显示 `checks.data_dir_writable.ok = false`，或出现文件占用、权限拒绝、数据库只读、无法写入 `data/` 等问题：
 
-1. 先确认数据库路径必须位于当前项目的 `data/assistant.sqlite`；
+1. 先确认数据库路径必须位于当前运行根目录下的 `data/assistant.sqlite`；
 2. 检查项目是否位于只读目录、压缩包内、同步盘冲突目录或受保护目录；
-3. 运行 `& $DA_PY @DA_PY_ARGS .\assistant.py init` 让程序尝试修复项目内权限；
+3. 运行 `.\run.cmd init` 让程序尝试修复项目内权限；
 4. 如果仍失败，报告具体失败路径和错误文本；
 5. 不要把数据库迁移到工作区外路径规避问题。
 
-### 9.6 winget 或安装器失败
-
-如果 `winget install --id Python.Python.3.12 -e` 失败，按错误类型处理：
-
-1. `winget` 不存在：提示用户当前 Windows 可能缺少 App Installer，优先从 Microsoft Store 更新或安装 App Installer；
-2. 网络失败：让用户确认网络和代理，再重试；
-3. 权限失败：优先尝试用户级安装，不要要求管理员权限，除非官方安装器明确需要；
-4. 安装源失败：改用 Python 官方网站安装器，并确保安装时勾选添加到 PATH。
-
-如果 PowerShell 拒绝执行命令，先读取错误文本判断原因。不要随意要求用户放宽全局执行策略；本项目正常命令不需要运行 `.ps1` 脚本。
-
-### 9.7 多 Python 版本或虚拟环境混乱
-
-如果系统中存在多个 Python，或 `python --version` 与用户预期不一致：
-
-1. 优先使用能通过 `& $DA_PY @DA_PY_ARGS .\assistant.py doctor` 的解释器；
-2. 不强制创建虚拟环境，因为本项目当前不依赖第三方 Python 包；
-3. 如果用户已有虚拟环境，可以在激活后按第 6.2 节重新选择 `$DA_PY`；
-4. 如果多个解释器导致混乱，使用 `py -0p` 查看可用解释器，再选择 Python 3.10 或更高版本；
-5. 选择后固定使用同一组 `$DA_PY` / `$DA_PY_ARGS` 执行本次安装验证的所有命令。
-
-### 9.8 中文路径和编码问题
+### 9.5 中文路径和编码问题
 
 如果项目路径、用户名或输入内容包含中文，优先保持 UTF-8 和 base64 写入方式：
 
@@ -476,21 +356,21 @@ py -3 --version
 3. 不使用 PowerShell 裸管道直接传中文 JSON；
 4. 如果终端显示乱码，先确认文件内容是否能按 UTF-8 正常读取，不要仅凭终端显示判断文件损坏。
 
-### 9.9 兜底排查
+### 9.6 兜底排查
 
 如果第 9 节前面的分支仍无法解决问题，大模型必须继续主动排查，目标是把项目安装并验证到可用状态，而不是把未分析的错误直接交给用户。
 
 兜底排查顺序：
 
 1. 完整读取最近一次命令的错误输出；
-2. 确认当前目录、Python 版本、`assistant.py`、`schema.sql`、`extensions/` 和 `data/` 状态；
+2. 确认当前目录、`run.cmd`、`runtime\python\python.exe`、`assistant.py`、`schema.sql`、`extensions/` 和 `data/` 状态；
 3. 读取 `assistant.py` 中与失败命令相关的参数、环境检查和错误处理逻辑；
 4. 读取 `schema.sql`，确认数据库初始化需要的结构文件存在且可读；
 5. 根据错误文本搜索本项目文件，定位是否有已定义的错误码或处理分支；
-6. 如果问题涉及 Python、pip、winget、Windows 权限、PATH 或 SQLite 标准库，并且本地信息不足，应联网查找官方或可信资料；
+6. 如果问题涉及 Windows 权限、文件占用或 SQLite 标准库，并且本地信息不足，应联网查找官方或可信资料；
 7. 每次只做一个最小修复动作，然后重新运行对应检查命令；
 8. 修复后必须回到失败步骤继续执行，并最终完成第 8 节查询验证；
-9. 只有在缺少用户权限、缺少网络、外部安装器失败、文件缺失且无法恢复等情况确实无法继续时，才停止并报告明确阻塞原因、已尝试步骤和下一步需要用户做什么。
+9. 只有在缺少用户权限、文件缺失且无法恢复、或外部状态无法改变等情况确实无法继续时，才停止并报告明确阻塞原因、已尝试步骤和下一步需要用户做什么。
 
 兜底排查不得执行以下操作：
 
@@ -502,24 +382,18 @@ py -3 --version
 
 ## 10. 最小可用标准
 
-项目可用需要同时满足：
+便携包可用需要同时满足：
 
-1. 已确定可用的 `$DA_PY` / `$DA_PY_ARGS`，对应解释器版本为 Python 3.10 或更高；
-2. `& $DA_PY @DA_PY_ARGS .\assistant.py doctor` 返回 `status: ok`；
-3. `& $DA_PY @DA_PY_ARGS .\assistant.py --help` 能列出核心命令；
-4. `& $DA_PY @DA_PY_ARGS .\assistant.py init` 返回 `status: ok`；
-5. `apply-json --base64` 能写入中文记录；
-6. 写入结果包含 `verification.read_after_write: true`；
-7. `query --date YYYY-MM-DD` 能查到对应日期的日程；
-8. `query --type task --status active` 能查到任务；
-9. 数据库文件位于 `data/assistant.sqlite`。
-
-新电脑安装完成还必须额外满足：
-
-1. `python --version` 能返回 Python 3.10 或更高版本；
-2. `python .\assistant.py doctor` 返回 `status: ok`；
-3. `python .\assistant.py --help` 能列出核心命令；
-4. 裸 `python .\assistant.py apply-json --base64 ...` 可以完成中文写入测试。
+1. 目标运行根目录直接包含 `run.cmd`；
+2. 目标运行根目录直接包含 `runtime\python\python.exe`；
+3. `.\run.cmd doctor` 返回 `status: ok`；
+4. `.\run.cmd --help` 能列出核心命令；
+5. `.\run.cmd init` 返回 `status: ok`；
+6. `apply-json --base64` 能写入中文记录；
+7. 写入结果包含 `verification.read_after_write: true`；
+8. `query --date YYYY-MM-DD` 能查到对应日期的日程；
+9. `query --type task --status active` 能查到任务；
+10. 数据库文件位于 `data/assistant.sqlite`。
 
 ## 11. 回复规则
 
@@ -532,13 +406,13 @@ py -3 --version
 
 安装完成后，只需简要说明：
 
-1. 环境检查结果；
+1. 目录检查结果；
 2. 初始化结果；
 3. 最小写入和查询测试结果；
 4. 项目是否已经可用。
 
 ## 12. 限制
 
-1. 本扩展是安装和可用性说明，不是自动安装脚本。
+1. 本扩展是便携包安装和可用性说明，不是便携包构建、下载或发布脚本。
 2. 本扩展不写入业务数据，除非正在执行第 8 节最小写入测试。
 3. 本扩展不修改 `assistant.py`、`AGENTS.md` 或 `schema.sql`。

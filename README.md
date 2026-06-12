@@ -8,15 +8,15 @@ DailyAssistant 是一个本地运行的任务和日程助手。它使用 LLM 理
 
 ## 当前版本
 
-- 应用版本：`DailyAssistant 2.1.0`
+- 应用版本：`DailyAssistant 3.0.0`
 - 版本来源：`assistant.py` 中的 `APP_VERSION`
 - 查看版本：
 
 ```powershell
-python .\assistant.py --version
+.\run.cmd --version
 ```
 
-当前版本使用本地 SQLite 数据库保存数据，支持记录、查询、完成、取消、待确认处理和扩展能力；运行环境仍以 Python 3.10+ 和标准库为主，不需要安装第三方 Python 包。
+当前版本使用本地 SQLite 数据库保存数据，支持记录、查询、完成、取消、待确认处理和扩展能力；主版本以便携包形式运行，普通用户通过 `run.cmd` 使用随包提供的本地运行时。
 
 ## 核心能力
 
@@ -31,11 +31,13 @@ python .\assistant.py --version
 
 ```text
 .
+|-- run.cmd
 |-- assistant.py
 |-- schema.sql
 |-- AGENTS.md
 |-- data/
-|   `-- assistant.sqlite
+|-- runtime/
+|   `-- python/
 `-- extensions/
     |-- catalog.md
     |-- init.md
@@ -48,42 +50,74 @@ python .\assistant.py --version
 其中：
 
 - `assistant.py` 是唯一的写库和查询入口。
+- `run.cmd` 是日常 CLI 入口，便携包内会调用 `runtime/python/python.exe`。
 - `schema.sql` 定义 SQLite 数据库结构。
-- `data/assistant.sqlite` 是本地数据库文件。
+- `data/assistant.sqlite` 是安装后由 `init` 创建的本地数据库文件，默认不随便携包发布。
+- `runtime/python/` 是便携包运行时目录。
 - `extensions/` 保存扩展能力说明。
 - 本项目依赖大语言模型代理作为入口，`AGENTS.md` 必须放在项目根目录文件夹下，用于保存代理在本目录内工作的项目规则。
 
 ## 运行环境
 
-推荐环境：
+运行便携包只需要：
 
 - Windows PowerShell
-- Python 3.10 或更高版本
-- Python 标准库中的 `sqlite3`、`json`、`argparse`、`base64`、`pathlib`
+- 完整的 DailyAssistant 运行根目录
+- 可写的 `data/` 目录
 
-当前项目不要求安装第三方 Python 包，也不要求单独安装 SQLite 命令行工具、Node.js 或 MCP。
+运行所需组件已随便携包提供；用户只需保留便携包内文件并在运行根目录中使用 `run.cmd`。
 
 ## 安装与初始化
 
-如果当前是大语言模型在自动安装，应先确认本项目根目录文件夹下存在 `AGENTS.md`，然后直接在本项目根目录文件夹中执行安装和初始化；安装过程中产生的临时过程文件应统一放在 `download/` 文件夹中，并在安装完成后清除。
+便携包内容目录是：
 
-在项目根目录运行：
-
-```powershell
-python .\assistant.py doctor
+```text
+dist/DailyAssistantPortable/
 ```
 
-如果环境检查通过，初始化数据库：
+安装本项目时，只需要保留便携包内容目录里的文件，并把这些文件放在目标运行根目录下。目标根目录下必须直接包含 `run.cmd`、`assistant.py`、`schema.sql`、`AGENTS.md`、`extensions/`、`runtime/` 和 `data/`；不要在运行根目录下再套一层 `DailyAssistantPortable` 子目录。
 
-```powershell
-python .\assistant.py init
+安装后的根目录结构应类似：
+
+```text
+DailyAssistant/
+|-- run.cmd
+|-- assistant.py
+|-- schema.sql
+|-- AGENTS.md
+|-- data/
+|-- extensions/
+`-- runtime/
 ```
 
-确认 CLI 可用：
+普通用户进入这个安装根目录后运行：
 
 ```powershell
-python .\assistant.py --help
+.\run.cmd doctor
+.\run.cmd init
+.\run.cmd --help
 ```
+
+需要重新生成便携包时，在源码目录运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build_portable.ps1
+```
+
+默认不会复制当前项目的私人数据库，也不会在便携包中内置 `data/assistant.sqlite`；用户安装后运行 `.\run.cmd init` 时会创建本地数据库。如果明确需要把当前数据库一起打包，可运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build_portable.ps1 -IncludeDatabase
+```
+
+生成后可验证：
+
+```powershell
+.\dist\DailyAssistantPortable\run.cmd doctor
+.\dist\DailyAssistantPortable\run.cmd --version
+```
+
+发布或安装时，复制的是 `dist\DailyAssistantPortable\` 内部内容；复制后的目标目录就是 DailyAssistant 的运行根目录。
 
 初始化成功后，数据库会位于：
 
@@ -96,37 +130,37 @@ data/assistant.sqlite
 查看今天的任务、日程和待确认事项：
 
 ```powershell
-python .\assistant.py query --period today
+.\run.cmd query --period today
 ```
 
 查看本周安排：
 
 ```powershell
-python .\assistant.py query --period week
+.\run.cmd query --period week
 ```
 
 查看指定日期：
 
 ```powershell
-python .\assistant.py query --date 2026-06-12
+.\run.cmd query --date 2026-06-12
 ```
 
 查看全部活跃任务：
 
 ```powershell
-python .\assistant.py query --type task --status active
+.\run.cmd query --type task --status active
 ```
 
 查看全部活跃日程：
 
 ```powershell
-python .\assistant.py query --type event --status active
+.\run.cmd query --type event --status active
 ```
 
 查看待确认队列：
 
 ```powershell
-python .\assistant.py query --type reviews --status active
+.\run.cmd query --type reviews --status active
 ```
 
 待确认状态映射：
@@ -143,24 +177,24 @@ python .\assistant.py query --type reviews --status active
 用户补充信息后，先按实际情况创建或更新任务/日程，再关闭对应待确认项：
 
 ```powershell
-python .\assistant.py review --review-id REVIEW_ID --status resolved --item-id ITEM_ID
+.\run.cmd review --review-id REVIEW_ID --status resolved --item-id ITEM_ID
 ```
 
 如果某条待确认项是误判、历史遗留或用户确认不需要处理，标记为作废：
 
 ```powershell
-python .\assistant.py review --review-id REVIEW_ID --status dismissed
+.\run.cmd review --review-id REVIEW_ID --status dismissed
 ```
 
 如果误关了待确认项，可以重新打开：
 
 ```powershell
-python .\assistant.py review --review-id REVIEW_ID --status open
+.\run.cmd review --review-id REVIEW_ID --status open
 ```
 
 ## 写入数据
 
-日常使用时，推荐直接让 Codex 根据自然语言生成符合项目规则的 JSON，并通过 `assistant.py apply-json --base64` 写入数据库。
+日常使用时，推荐直接让 Codex 根据自然语言生成符合项目规则的 JSON，并通过 `.\run.cmd apply-json --base64` 写入数据库。
 
 中文 JSON 应使用 UTF-8 base64 方式传递，避免 PowerShell 编码问题：
 
@@ -199,7 +233,7 @@ $json = @'
 }
 '@
 $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
-python .\assistant.py apply-json --base64 $b64
+.\run.cmd apply-json --base64 $b64
 ```
 
 写入成功后，`apply-json` 会返回写后读取结果。看到 `verification.read_after_write = true` 后，不需要再为同一次写入额外查询数据库。
@@ -209,13 +243,13 @@ python .\assistant.py apply-json --base64 $b64
 完成明确任务：
 
 ```powershell
-python .\assistant.py complete --item-id ITEM_ID
+.\run.cmd complete --item-id ITEM_ID
 ```
 
 取消任务或日程：
 
 ```powershell
-python .\assistant.py cancel --item-id ITEM_ID
+.\run.cmd cancel --item-id ITEM_ID
 ```
 
 取消是软删除：事项会被标记为 `cancelled`，数据库行不会被物理删除。
@@ -225,7 +259,7 @@ python .\assistant.py cancel --item-id ITEM_ID
 - 本项目的事实来源是 `data/assistant.sqlite`。
 - 不要手工编辑 SQLite 数据库文件。
 - 不要直接写 SQL 修改业务数据。
-- 所有写入、查询、完成和取消操作都应通过 `assistant.py` 完成。
+- 所有写入、查询、完成和取消操作都应通过 `run.cmd` 调用 `assistant.py` 完成。
 - 备份和恢复流程请参考 `extensions/backup.md`。
 
 ## 扩展能力
@@ -239,14 +273,22 @@ extensions/catalog.md
 常见扩展包括：
 
 - `init`：首次使用或数据库缺失时的说明入口。
-- `install`：检查和初始化本地运行环境。
+- `install`：检查、构建和初始化便携运行环境。
 - `backup`：备份和恢复用户数据。
 - `update`：从 GitHub 仓库检查并应用程序更新。
 - `daily-work`：生成每日任务清单自动化。
 
 ## 更新日志
 
+### 3.0.0
+
+- 更新应用版本号为 `DailyAssistant 3.0.0`。
+- 发布 `DailyAssistantPortable-3.0.0.zip` 便携包；默认不包含当前项目的私人数据库，也不内置初始化数据库文件。
+
 ### 2.1.0
+
+- 主运行入口切换为 `run.cmd`，便携包内使用 `runtime/python/python.exe`，运行所需组件随包提供。
+- 新增 `tools/build_portable.ps1`，用于生成 `dist/DailyAssistantPortable`。
 
 - 新增 `review` 命令，可用明确的 `review_id` 更新待确认项状态。
 - `review --status resolved --item-id ITEM_ID` 用于在创建或更新事项后关闭待确认项，并关联到实际事项。

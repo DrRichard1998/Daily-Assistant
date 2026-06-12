@@ -80,26 +80,26 @@
 生成当天日报时，优先运行：
 
 ```powershell
-python .\assistant.py query --period today
+.\run.cmd query --period today
 ```
 
 生成指定日期日报时，运行：
 
 ```powershell
-python .\assistant.py query --date YYYY-MM-DD
+.\run.cmd query --date YYYY-MM-DD
 ```
 
 如需补充当天已完成任务或日程，可按需运行：
 
 ```powershell
-python .\assistant.py query --date YYYY-MM-DD --type task --status completed
-python .\assistant.py query --date YYYY-MM-DD --type event --status completed
+.\run.cmd query --date YYYY-MM-DD --type task --status completed
+.\run.cmd query --date YYYY-MM-DD --type event --status completed
 ```
 
 如需确保待确认事项为全量活跃队列，运行：
 
 ```powershell
-python .\assistant.py query --type reviews --status active
+.\run.cmd query --type reviews --status active
 ```
 
 ## 6. 输出目标

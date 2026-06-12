@@ -7,6 +7,7 @@
 - 用户可以自然语言输入，不需要学习命令格式。
 - Codex 负责理解用户意图并生成 JSON。
 - `assistant.py` 负责校验、写库、查询和写后读取。
+- 日常 CLI 默认通过 `.\run.cmd` 调用；便携包内的 `run.cmd` 使用随包提供的本地运行时。
 - 不直接写 SQL，不手工修改数据库文件。
 - 不为同一次写入额外运行查询命令做验证；`apply-json` 已经返回写后读取结果。
 - 默认中文回复，除非用户明确要求其他语言。
@@ -88,7 +89,7 @@ extensions/catalog.md
 4. 明确是待办事项但没有明确截止日期时，创建 `task`，并把 `due_at` 设为 `null`；不要为缺少截止日期追问。
 5. 生成符合 JSON 合约的对象。
 6. 将 JSON 按 UTF-8 编码为 base64。
-7. 运行 `python .\assistant.py apply-json --base64 BASE64_JSON`。
+7. 运行 `.\run.cmd apply-json --base64 BASE64_JSON`。
 8. 不保留临时 JSON 文件。
 9. 只根据 CLI 返回的 `verification` 回复用户。
 
@@ -99,7 +100,7 @@ $json = @'
 {JSON}
 '@
 $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
-python .\assistant.py apply-json --base64 $b64
+.\run.cmd apply-json --base64 $b64
 ```
 
 不要使用 PowerShell 裸管道或 `--json` 直接传中文 JSON。
@@ -111,32 +112,32 @@ python .\assistant.py apply-json --base64 $b64
 统一使用 `query` 命令。
 
 ```powershell
-python .\assistant.py query
-python .\assistant.py query --date YYYY-MM-DD
-python .\assistant.py query --period today
-python .\assistant.py query --period week
-python .\assistant.py query --period month
-python .\assistant.py query --from YYYY-MM-DD --to YYYY-MM-DD
-python .\assistant.py query --date YYYY-MM-DD --type task --status active
-python .\assistant.py query --date YYYY-MM-DD --type event --status active
-python .\assistant.py query --date YYYY-MM-DD --type reviews --status active
+.\run.cmd query
+.\run.cmd query --date YYYY-MM-DD
+.\run.cmd query --period today
+.\run.cmd query --period week
+.\run.cmd query --period month
+.\run.cmd query --from YYYY-MM-DD --to YYYY-MM-DD
+.\run.cmd query --date YYYY-MM-DD --type task --status active
+.\run.cmd query --date YYYY-MM-DD --type event --status active
+.\run.cmd query --date YYYY-MM-DD --type reviews --status active
 ```
 
 范围选择规则：
 
-- 用户问“今天有什么”“今天安排”“今天任务和日程”“今天待办和日程”等完整视图：运行 `python .\assistant.py query --period today`。
-- 用户只问某天的任务、待办、事项：运行 `python .\assistant.py query --date YYYY-MM-DD --type task --status active`。
-- 用户只问某天的日程、会议、预约、课程、考试、活动：运行 `python .\assistant.py query --date YYYY-MM-DD --type event --status active`。
-- 用户问“本周有什么”“这周安排”“本周任务和日程”：运行 `python .\assistant.py query --period week`。
-- 用户问“本月有什么”“这个月安排”“本月任务和日程”：运行 `python .\assistant.py query --period month`。
-- 用户只问某段时间的任务、待办、事项：运行 `python .\assistant.py query --from YYYY-MM-DD --to YYYY-MM-DD --type task --status active`。
-- 用户只问某段时间的日程、会议、预约、课程、考试、活动：运行 `python .\assistant.py query --from YYYY-MM-DD --to YYYY-MM-DD --type event --status active`。
+- 用户问“今天有什么”“今天安排”“今天任务和日程”“今天待办和日程”等完整视图：运行 `.\run.cmd query --period today`。
+- 用户只问某天的任务、待办、事项：运行 `.\run.cmd query --date YYYY-MM-DD --type task --status active`。
+- 用户只问某天的日程、会议、预约、课程、考试、活动：运行 `.\run.cmd query --date YYYY-MM-DD --type event --status active`。
+- 用户问“本周有什么”“这周安排”“本周任务和日程”：运行 `.\run.cmd query --period week`。
+- 用户问“本月有什么”“这个月安排”“本月任务和日程”：运行 `.\run.cmd query --period month`。
+- 用户只问某段时间的任务、待办、事项：运行 `.\run.cmd query --from YYYY-MM-DD --to YYYY-MM-DD --type task --status active`。
+- 用户只问某段时间的日程、会议、预约、课程、考试、活动：运行 `.\run.cmd query --from YYYY-MM-DD --to YYYY-MM-DD --type event --status active`。
 - 用户明确要查看已完成、已取消或全部状态时，分别使用 `--status completed`、`--status cancelled` 或 `--status all`。
-- 用户明确要查看全部活跃任务列表，而不是某天或某段时间视图：运行 `python .\assistant.py query --type task --status active`。
-- 用户明确要查看全部活跃日程列表，而不是某天或某段时间视图：运行 `python .\assistant.py query --type event --status active`。
-- 用户只问某天的待确认、待澄清、需要我确认的事项：运行 `python .\assistant.py query --date YYYY-MM-DD --type reviews --status active`。
-- 用户只问某段时间的待确认、待澄清、需要我确认的事项：运行 `python .\assistant.py query --from YYYY-MM-DD --to YYYY-MM-DD --type reviews --status active`。
-- 用户明确要查看待确认队列，而不是某天或某段时间视图：运行 `python .\assistant.py query --type reviews --status active`。
+- 用户明确要查看全部活跃任务列表，而不是某天或某段时间视图：运行 `.\run.cmd query --type task --status active`。
+- 用户明确要查看全部活跃日程列表，而不是某天或某段时间视图：运行 `.\run.cmd query --type event --status active`。
+- 用户只问某天的待确认、待澄清、需要我确认的事项：运行 `.\run.cmd query --date YYYY-MM-DD --type reviews --status active`。
+- 用户只问某段时间的待确认、待澄清、需要我确认的事项：运行 `.\run.cmd query --from YYYY-MM-DD --to YYYY-MM-DD --type reviews --status active`。
+- 用户明确要查看待确认队列，而不是某天或某段时间视图：运行 `.\run.cmd query --type reviews --status active`。
 
 `query` 入参规则：
 
@@ -170,9 +171,9 @@ python .\assistant.py query --date YYYY-MM-DD --type reviews --status active
 常用命令示例：
 
 ```powershell
-python .\assistant.py review --review-id REVIEW_ID --status resolved --item-id ITEM_ID
-python .\assistant.py review --review-id REVIEW_ID --status dismissed
-python .\assistant.py review --review-id REVIEW_ID --status open
+.\run.cmd review --review-id REVIEW_ID --status resolved --item-id ITEM_ID
+.\run.cmd review --review-id REVIEW_ID --status dismissed
+.\run.cmd review --review-id REVIEW_ID --status open
 ```
 
 处理规则：
@@ -191,8 +192,8 @@ python .\assistant.py review --review-id REVIEW_ID --status open
 
 执行步骤：
 
-1. 如果用户提供明确 `item_id`，直接运行 `python .\assistant.py update --item-id ITEM_ID ...`。
-2. 如果没有 `item_id`，先运行 `python .\assistant.py query --status active`。
+1. 如果用户提供明确 `item_id`，直接运行 `.\run.cmd update --item-id ITEM_ID ...`。
+2. 如果没有 `item_id`，先运行 `.\run.cmd query --status active`。
 3. 如果能唯一、高置信度匹配，修改该事项。
 4. 如果无匹配或多匹配，不猜测，只问一个最小澄清问题。
 5. 需要清空字段时使用 `--clear FIELD`；不要用空字符串或“无”冒充空值。
@@ -201,13 +202,13 @@ python .\assistant.py review --review-id REVIEW_ID --status open
 常用命令示例：
 
 ```powershell
-python .\assistant.py update --item-id ITEM_ID --title 新标题
-python .\assistant.py update --item-id ITEM_ID --due-at 2026-06-16T23:59:00+08:00
-python .\assistant.py update --item-id ITEM_ID --start-at 2026-06-16T14:00:00+08:00 --end-at 2026-06-16T15:00:00+08:00
-python .\assistant.py update --item-id ITEM_ID --location 会议室A --people [张三,李四]
-python .\assistant.py update --item-id ITEM_ID --clear due_at
-python .\assistant.py update --item-id ITEM_ID --scope occurrence --occurrence-date 2026-06-16 --title 新标题
-python .\assistant.py update --item-id ITEM_ID --scope series --title 新标题
+.\run.cmd update --item-id ITEM_ID --title 新标题
+.\run.cmd update --item-id ITEM_ID --due-at 2026-06-16T23:59:00+08:00
+.\run.cmd update --item-id ITEM_ID --start-at 2026-06-16T14:00:00+08:00 --end-at 2026-06-16T15:00:00+08:00
+.\run.cmd update --item-id ITEM_ID --location 会议室A --people [张三,李四]
+.\run.cmd update --item-id ITEM_ID --clear due_at
+.\run.cmd update --item-id ITEM_ID --scope occurrence --occurrence-date 2026-06-16 --title 新标题
+.\run.cmd update --item-id ITEM_ID --scope series --title 新标题
 ```
 
 支持修改的字段：
@@ -224,15 +225,15 @@ type, title, content, status, confidence, due_at, start_at, end_at, all_day, pro
 
 执行步骤：
 
-1. 如果用户提供明确 `item_id`，运行 `python .\assistant.py complete --item-id ITEM_ID`。
-2. 如果没有 `item_id`，先运行 `python .\assistant.py query --status active`。
+1. 如果用户提供明确 `item_id`，运行 `.\run.cmd complete --item-id ITEM_ID`。
+2. 如果没有 `item_id`，先运行 `.\run.cmd query --status active`。
 3. 如果能唯一、高置信度匹配，完成该事项。
 4. 如果无匹配或多匹配，不猜测，只问一个最小澄清问题。
 
 完成定时 item 时默认是完成某一次打卡，不是完成整个计划。若用户没有明确日期，`assistant.py complete` 会默认选择最近一条应完成的实例，并在返回中说明 `recurrence.occurrence_date` 和是否 `auto_selected`；回复必须说明实际完成的是哪一天。若用户明确日期，使用：
 
 ```powershell
-python .\assistant.py complete --item-id ITEM_ID --occurrence-date YYYY-MM-DD
+.\run.cmd complete --item-id ITEM_ID --occurrence-date YYYY-MM-DD
 ```
 
 每次执行 `complete` 前，CLI 会自动将 `active_until` 早于今天且仍为 `active` 的定时母 item 标记为 `completed`，表示有限周期计划自然到期完成；历史打卡记录保留不变。
@@ -245,8 +246,8 @@ python .\assistant.py complete --item-id ITEM_ID --occurrence-date YYYY-MM-DD
 
 执行步骤：
 
-1. 如果用户提供明确 `item_id`，运行 `python .\assistant.py cancel --item-id ITEM_ID`。
-2. 如果没有 `item_id`，先运行 `python .\assistant.py query --status active`。
+1. 如果用户提供明确 `item_id`，运行 `.\run.cmd cancel --item-id ITEM_ID`。
+2. 如果没有 `item_id`，先运行 `.\run.cmd query --status active`。
 3. 如果能唯一、高置信度匹配，取消该事项。
 4. 如果无匹配或多匹配，不猜测，只问一个最小澄清问题。
 5. 回复时可以按用户语义说“已删除”或“已取消”，但不要声称已从数据库物理删除。
@@ -254,13 +255,13 @@ python .\assistant.py complete --item-id ITEM_ID --occurrence-date YYYY-MM-DD
 取消定时 item 时必须区分“某一次”或“整个定时任务”。取消某一次使用：
 
 ```powershell
-python .\assistant.py cancel --item-id ITEM_ID --scope occurrence --occurrence-date YYYY-MM-DD
+.\run.cmd cancel --item-id ITEM_ID --scope occurrence --occurrence-date YYYY-MM-DD
 ```
 
 这会写入 `recurrence_status.status = cancelled`，只让那一天不再出现。取消整个定时任务使用：
 
 ```powershell
-python .\assistant.py cancel --item-id ITEM_ID --scope series
+.\run.cmd cancel --item-id ITEM_ID --scope series
 ```
 
 这会将母 item 标记为 `cancelled`，表示用户主动放弃整个计划。若 CLI 返回 `requires_scope`，只问：“这是一个定时任务。你要取消这一次，还是整个定时任务？”
@@ -327,20 +328,20 @@ python .\assistant.py cancel --item-id ITEM_ID --scope series
 - `complete` 目前用明确 `item_id` 完成任务或日程。定时 item 完成某次时可省略 `--occurrence-date`，CLI 会默认选择最近一条应完成的实例。
 - `cancel` 目前用明确 `item_id` 软删除任务或日程。定时 item 取消必须区分某一次或整个定时任务。
 - `review` 目前用明确 `review_id` 修改待确认项状态，支持 `open`、`resolved`、`dismissed`；可用 `--item-id` 关联已创建或已更新的事项。
-- 本目录的数据写入只通过 `assistant.py` 完成。
+- 本目录的数据写入只通过 `.\run.cmd` 调用 `assistant.py` 完成。
 
 ## 14. 异常、初始化与环境处理
 
 ### 14.1 通用顺序
 
-不要为了每次用户输入额外手动检查 `data/assistant.sqlite`。正常情况下，先按用户意图进入对应路径，并运行该路径需要的 `assistant.py` 命令。
+不要为了每次用户输入额外手动检查 `data/assistant.sqlite`。正常情况下，先按用户意图进入对应路径，并运行该路径需要的 `.\run.cmd` 命令。
 
 只在以下情况进入本节：
 
-- 用户要求安装、初始化、配置环境或排查运行环境；
-- 任一 `assistant.py` 命令返回 `needs_init`；
-- `assistant.py` 返回 `environment_error`；
-- `assistant.py` 命令自身无法运行；
+- 用户要求初始化、检查便携包或排查运行目录；
+- 任一 `.\run.cmd` 命令返回 `needs_init`；
+- `.\run.cmd` 返回 `environment_error`；
+- `.\run.cmd` 命令自身无法运行；
 - CLI 返回编码、权限、只读数据库等异常。
 
 ### 14.2 可绕过环境问题的提醒
@@ -357,7 +358,7 @@ python .\assistant.py cancel --item-id ITEM_ID --scope series
 
 ### 14.3 数据库缺失
 
-如果任一 `assistant.py` 命令返回：
+如果任一 `.\run.cmd` 命令返回：
 
 ```json
 {
@@ -371,14 +372,14 @@ python .\assistant.py cancel --item-id ITEM_ID --scope series
 extensions/init.md
 ```
 
-此时不要进入其他意图路径，不要直接运行 `python .\assistant.py init`，也不要写入数据库。只有用户确认开始使用本项目后，才按 `extensions/init.md` 转入 `extensions/install.md`。
+此时不要进入其他意图路径，不要直接运行 `.\run.cmd init`，也不要写入数据库。只有用户确认开始使用本项目后，才按 `extensions/init.md` 转入 `extensions/install.md`。
 
 ### 14.4 环境异常
 
-如果用户要求安装、初始化、配置环境或排查运行环境，先按 `extensions/install.md` 的解释器选择流程确定可用 Python 调用方式，再运行：
+如果用户要求初始化、检查便携包或排查运行目录，先按 `extensions/install.md` 的便携运行时流程确认 `run.cmd` 可用，再运行：
 
 ```powershell
-& $DA_PY @DA_PY_ARGS .\assistant.py doctor
+.\run.cmd doctor
 ```
 
 如果 `doctor` 返回：
@@ -395,10 +396,10 @@ extensions/init.md
 extensions/install.md
 ```
 
-如果 `assistant.py doctor` 自身无法运行，必须先读取错误文本判断原因：
+如果 `.\run.cmd doctor` 自身无法运行，必须先读取错误文本判断原因：
 
-1. 若原因是 `python` 命令不存在、Python 未加入 PATH、需要使用完整解释器路径，或沙箱需要授权执行本机 Python，则直接读取并执行 `extensions/install.md`，不要展示数据库不存在或初始化数据库的文案。
-2. 若 `assistant.py` 已经成功启动并明确返回 `status: needs_init`，才按第 14.3 节进入 `extensions/init.md`。
+1. 若原因是 `runtime\python\python.exe` 缺失、`run.cmd` 缺失、便携包未构建或运行根目录不完整，则直接读取并执行 `extensions/install.md`，不要展示数据库不存在或初始化数据库的文案。
+2. 若 `assistant.py` 已经通过 `run.cmd` 成功启动并明确返回 `status: needs_init`，才按第 14.3 节进入 `extensions/init.md`。
 3. 若用户明确是在首次启用本项目且需要初始化数据库，可以进入 `extensions/init.md` 的确认流程；用户确认后再转入 `extensions/install.md`。
 
 ### 14.5 编码
@@ -407,7 +408,7 @@ extensions/install.md
 
 ### 14.6 权限
 
-`python .\assistant.py init` 会检查并修复本项目内 `data/` 和 `data/assistant.sqlite` 对当前 Windows 用户的写权限；所有写库命令也会在打开 SQLite 前执行同一套自检。
+`.\run.cmd init` 会检查并修复本项目内 `data/` 和 `data/assistant.sqlite` 对当前 Windows 用户的写权限；所有写库命令也会在打开 SQLite 前执行同一套自检。
 
 如果 CLI 返回 `readonly database`、`read-only` 或数据库不可写：
 
