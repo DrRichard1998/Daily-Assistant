@@ -100,6 +100,21 @@
 
 如果任何一步失败，进入第 9 节排错流程。排错完成后回到失败步骤继续执行，不要跳到后续步骤。
 
+### 5.1 日常使用免排查要求
+
+`AGENTS.md` 中的记录、查询、完成和取消路径默认使用 `python .\assistant.py ...`。因此安装完成的目标不只是找到某个可用解释器，而是让新电脑在项目根目录中可以直接运行裸 `python` 命令。
+
+安装阶段必须主动完成以下检查：
+
+1. `python --version` 能返回 Python 3.10 或更高版本；
+2. `python .\assistant.py doctor` 返回 `status: ok`；
+3. `python .\assistant.py --help` 能列出核心命令；
+4. 第 8.1 节的最小中文写入测试可以改用裸 `python .\assistant.py apply-json --base64 $b64` 成功执行。
+
+如果只能通过 `$DA_PY` / `$DA_PY_ARGS`、`py -3` 或完整 `python.exe` 路径运行项目，而裸 `python` 不可用，则环境只算临时可运行，不算完成安装。此时不要进入业务记录流程，应继续按第 9.1 节修复 PATH、Python Launcher 或官方 Python 安装，直到裸 `python` 可用。
+
+只有在用户明确接受长期使用自定义解释器调用方式时，才可以保留 `$DA_PY` / `$DA_PY_ARGS` 方案。此时必须同步修改日常工作规则中的命令写法，否则下次记录日程仍会先尝试裸 `python` 并触发排查流程。
+
 ## 6. 环境检查
 
 ### 6.1 确认项目根目录
@@ -154,7 +169,7 @@ $DA_PY_ARGS = @()
 判断规则：
 
 1. `$DA_PY` 有值且 `& $DA_PY @DA_PY_ARGS --version` 能返回 Python 3.10 或更高版本，继续第 6.3 节；
-2. `python` 命令找不到时，不进入数据库初始化说明，不展示“数据库不存在”的文案；
+2. `python` 命令找不到时，不进入数据库初始化说明，不展示“数据库不存在”的文案；如果目标是完成新电脑安装，还必须在第 9.1 节修复到裸 `python` 可用；
 3. `py -3` 可用但 `python` 不可用时，后续所有命令都使用 `& $DA_PY @DA_PY_ARGS ...`，不要临时改回裸 `python`；
 4. 只有找不到任何 Python 3.10 或更高版本解释器时，才进入第 9.1 节安装或修复 Python；
 5. 在沙箱环境中执行工作区外的完整 `python.exe` 如果被权限系统拦截，应按工具提示请求授权执行该本机 Python，不要改为初始化数据库。
@@ -361,7 +376,7 @@ py -3 --version
 1. 关闭当前 PowerShell，重新打开一个新的 PowerShell；
 2. 回到项目目录；
 3. 再执行第 6.2 节的 `$DA_PY` 选择流程；
-4. 如果 `py -3` 可用但 `python` 不可用，可以长期使用 `$DA_PY = (Get-Command py).Source` 和 `$DA_PY_ARGS = @("-3")`；
+4. 如果 `py -3` 可用但 `python` 不可用，只能作为临时排查手段使用；新电脑安装完成前仍应修复 PATH，让 `python` 可用；
 5. 如果必须让裸 `python` 可用，再使用官方 Python 安装器修复 PATH，或重新安装并勾选添加到 PATH。
 
 ### 9.2 pip 不可用
@@ -466,6 +481,13 @@ py -3 --version
 7. `query --date YYYY-MM-DD` 能查到对应日期的日程；
 8. `query --type task --status active` 能查到任务；
 9. 数据库文件位于 `data/assistant.sqlite`。
+
+新电脑安装完成还必须额外满足：
+
+1. `python --version` 能返回 Python 3.10 或更高版本；
+2. `python .\assistant.py doctor` 返回 `status: ok`；
+3. `python .\assistant.py --help` 能列出核心命令；
+4. 裸 `python .\assistant.py apply-json --base64 ...` 可以完成中文写入测试。
 
 ## 11. 回复规则
 
