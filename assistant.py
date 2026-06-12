@@ -29,11 +29,13 @@ APP_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = APP_DIR / "data" / "assistant.sqlite"
 SCHEMA_PATH = APP_DIR / "schema.sql"
 LOCAL_TZ = timezone(timedelta(hours=8))
-APP_VERSION = "1.1.0"
+APP_VERSION = "2.0.0"
 
 VALID_ITEM_TYPES = {"task", "event"}
 VALID_ITEM_STATUS = {"active", "completed", "cancelled", "needs_review"}
 QUERY_ITEM_STATUS = {"active", "completed", "cancelled", "all"}
+VALID_RECURRENCE_FREQUENCIES = {"daily", "weekly", "monthly"}
+VALID_RECURRENCE_STATUS = {"completed", "cancelled"}
 VALID_PARSE_STATUS = {"parsed", "needs_review", "ignored", "failed"}
 VALID_RELATIONS = {"prepares_for", "related_to", "duplicate_of"}
 VALID_REVIEW_STATUS = {"open", "resolved", "dismissed"}
@@ -86,6 +88,31 @@ ITEMS_BACKUP_TABLE_COLUMNS = {
         "source_record_id",
         "created_at",
     ),
+    "recurrence_rules": (
+        "id",
+        "item_id",
+        "frequency",
+        "interval",
+        "by_weekday",
+        "by_month_day",
+        "start_date",
+        "active_until",
+        "timezone",
+        "created_at",
+        "updated_at",
+    ),
+    "recurrence_status": (
+        "id",
+        "rule_id",
+        "item_id",
+        "occurrence_date",
+        "status",
+        "override_json",
+        "completed_at",
+        "cancelled_at",
+        "created_at",
+        "updated_at",
+    ),
     "item_events": (
         "id",
         "item_id",
@@ -112,10 +139,20 @@ ITEMS_BACKUP_TABLE_ORDER = {
     "records": "created_at, id",
     "items": "created_at, id",
     "item_relations": "created_at, id",
+    "recurrence_rules": "created_at, id",
+    "recurrence_status": "created_at, id",
     "item_events": "created_at, id",
     "review_queue": "created_at, id",
 }
-ITEMS_BACKUP_IMPORT_ORDER = ("records", "items", "item_relations", "item_events", "review_queue")
+ITEMS_BACKUP_IMPORT_ORDER = (
+    "records",
+    "items",
+    "item_relations",
+    "recurrence_rules",
+    "recurrence_status",
+    "item_events",
+    "review_queue",
+)
 ITEMS_BACKUP_DELETE_ORDER = tuple(reversed(ITEMS_BACKUP_IMPORT_ORDER))
 
 
@@ -454,6 +491,75 @@ def json_or_none(value: Any, path: str) -> str | None:
     raise AppError(f"`{path}` must be a string, array, object, or null.")
 
 
+def validate_weekdays(value: Any, path: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise AppError(f"`{path}` must be an array of weekday numbers.")
+    weekdays: list[int] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, int) or item < 1 or item > 7:
+            raise AppError(f"`{path}[{index}]` must be an integer from 1 to 7.")
+        weekdays.append(item)
+    if not weekdays:
+        raise AppError(f"`{path}` cannot be empty.")
+    return json.dumps(sorted(set(weekdays)), ensure_ascii=False)
+
+
+def validate_recurrence(value: Any, index: int) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise AppError(f"`operations[{index}].item.recurrence` must be an object.")
+
+    frequency = value.get("frequency")
+    if frequency not in VALID_RECURRENCE_FREQUENCIES:
+        raise AppError(f"`operations[{index}].item.recurrence.frequency` must be daily, weekly, or monthly.")
+
+    try:
+        interval = int(value.get("interval", 1))
+    except (TypeError, ValueError) as exc:
+        raise AppError(f"`operations[{index}].item.recurrence.interval` must be an integer.") from exc
+    if interval < 1:
+        raise AppError(f"`operations[{index}].item.recurrence.interval` must be greater than 0.")
+
+    start_date = parse_iso_date(value.get("start_date"), f"operations[{index}].item.recurrence.start_date")
+    active_until_value = value.get("active_until")
+    active_until = parse_iso_date(active_until_value, f"operations[{index}].item.recurrence.active_until") if active_until_value else None
+    if active_until and active_until < start_date:
+        raise AppError("`recurrence.active_until` must be on or after `recurrence.start_date`.")
+
+    by_weekday = validate_weekdays(value.get("by_weekday"), f"operations[{index}].item.recurrence.by_weekday")
+    by_month_day = value.get("by_month_day")
+    if by_month_day is not None:
+        try:
+            by_month_day = int(by_month_day)
+        except (TypeError, ValueError) as exc:
+            raise AppError("`recurrence.by_month_day` must be an integer.") from exc
+        if by_month_day < 1 or by_month_day > 31:
+            raise AppError("`recurrence.by_month_day` must be between 1 and 31.")
+
+    if frequency == "weekly" and by_weekday is None:
+        by_weekday = json.dumps([start_date.isoweekday()], ensure_ascii=False)
+    if frequency != "weekly" and by_weekday is not None:
+        raise AppError("`recurrence.by_weekday` is only valid for weekly recurrence.")
+    if frequency == "monthly" and by_month_day is None:
+        by_month_day = start_date.day
+    if frequency != "monthly" and by_month_day is not None:
+        raise AppError("`recurrence.by_month_day` is only valid for monthly recurrence.")
+
+    return {
+        "id": value.get("id") or make_id("RR"),
+        "frequency": frequency,
+        "interval": interval,
+        "by_weekday": by_weekday,
+        "by_month_day": by_month_day,
+        "start_date": start_date.isoformat(),
+        "active_until": active_until.isoformat() if active_until else None,
+        "timezone": value.get("timezone", "Asia/Shanghai"),
+    }
+
+
 def validate_record(payload: dict[str, Any], ts: str) -> dict[str, Any]:
     record = require_object(payload, "record")
     canonical_text = record.get("canonical_text")
@@ -536,6 +642,7 @@ def validate_item(operation: dict[str, Any], index: int) -> tuple[str, dict[str,
         "project": item.get("project"),
         "people": json_or_none(item.get("people"), f"operations[{index}].item.people"),
         "location": item.get("location"),
+        "recurrence": validate_recurrence(item.get("recurrence"), index),
     }
 
 
@@ -558,6 +665,7 @@ def insert_record(conn: sqlite3.Connection, record: dict[str, Any]) -> None:
 
 
 def insert_item(conn: sqlite3.Connection, item: dict[str, Any], record_id: str, ts: str) -> None:
+    item_values = {key: value for key, value in item.items() if key != "recurrence"}
     conn.execute(
         """
         INSERT INTO items (
@@ -572,13 +680,41 @@ def insert_item(conn: sqlite3.Connection, item: dict[str, Any], record_id: str, 
         )
         """,
         {
-            **item,
+            **item_values,
             "created_from_record_id": record_id,
             "created_at": ts,
             "updated_at": ts,
             "completed_at": ts if item["status"] == "completed" else None,
         },
     )
+
+
+def insert_recurrence_rule(
+    conn: sqlite3.Connection,
+    item_id: str,
+    recurrence: dict[str, Any],
+    ts: str,
+) -> dict[str, Any]:
+    rule = {
+        **recurrence,
+        "item_id": item_id,
+        "created_at": ts,
+        "updated_at": ts,
+    }
+    conn.execute(
+        """
+        INSERT INTO recurrence_rules (
+          id, item_id, frequency, interval, by_weekday, by_month_day,
+          start_date, active_until, timezone, created_at, updated_at
+        )
+        VALUES (
+          :id, :item_id, :frequency, :interval, :by_weekday, :by_month_day,
+          :start_date, :active_until, :timezone, :created_at, :updated_at
+        )
+        """,
+        rule,
+    )
+    return rule
 
 
 def insert_item_event(
@@ -741,12 +877,27 @@ def fetch_apply_verification(db_path: Path, record_id: str, item_ids: list[str])
                 (record_id,),
             )
         ]
+        recurrence_rules = [
+            row_to_dict(row)
+            for row in conn.execute(
+                """
+                SELECT *
+                FROM recurrence_rules
+                WHERE item_id IN (
+                  SELECT id FROM items WHERE created_from_record_id = ?
+                )
+                ORDER BY created_at, id
+                """,
+                (record_id,),
+            )
+        ]
 
     return {
         "read_after_write": True,
         "record": row_to_dict(record_row),
         "items": item_rows,
         "relations": relations,
+        "recurrence_rules": recurrence_rules,
         "reviews": reviews,
         "item_events": events,
     }
@@ -772,12 +923,16 @@ def apply_json(config: AppConfig, payload: dict[str, Any]) -> None:
         insert_record(conn, record)
         for temp_id, item in normalized_items.items():
             insert_item(conn, item, record["id"], ts)
+            recurrence = item.get("recurrence")
+            if recurrence:
+                insert_recurrence_rule(conn, item["id"], recurrence, ts)
+            item_event_after = {key: value for key, value in item.items() if key != "recurrence"}
             insert_item_event(
                 conn,
                 item_id=item["id"],
                 record_id=record["id"],
                 action="create",
-                after_json=item,
+                after_json=item_event_after,
                 confidence=item.get("confidence"),
                 note=None,
                 ts=ts,
@@ -812,6 +967,7 @@ def apply_json(config: AppConfig, payload: dict[str, Any]) -> None:
             "record": {"id": record["id"], "parse_status": record["parse_status"]},
             "created_items": verification["items"],
             "created_relations": created_relations,
+            "created_recurrence_rules": verification["recurrence_rules"],
             "review": created_review,
             "verification": verification,
         }
@@ -823,6 +979,338 @@ def parse_date_arg(value: str, arg_name: str) -> date:
         return datetime.fromisoformat(value).date()
     except ValueError as exc:
         raise AppError(f"{arg_name} must be YYYY-MM-DD.") from exc
+
+
+def parse_iso_date(value: Any, path: str) -> date:
+    if not isinstance(value, str) or not value.strip():
+        raise AppError(f"`{path}` must be a date in YYYY-MM-DD format.")
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError as exc:
+        raise AppError(f"`{path}` must be a date in YYYY-MM-DD format.") from exc
+
+
+def item_anchor_datetime(item: dict[str, Any]) -> datetime | None:
+    value = item.get("due_at") if item["type"] == "task" else item.get("start_at")
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise AppError(f"Invalid item time: {value}") from exc
+
+
+def item_anchor_time(item: dict[str, Any]) -> str | None:
+    anchor = item_anchor_datetime(item)
+    if anchor is None:
+        return None
+    return anchor.timetz().replace(tzinfo=None).isoformat(timespec="seconds")
+
+
+def combine_date_with_item_time(item: dict[str, Any], occurrence_date: date) -> str | None:
+    anchor = item_anchor_datetime(item)
+    if anchor is None:
+        return None
+    combined = datetime.combine(occurrence_date, anchor.timetz().replace(tzinfo=LOCAL_TZ))
+    return combined.replace(microsecond=0).isoformat()
+
+
+def add_months(day: date, months: int) -> date:
+    month_index = day.month - 1 + months
+    year = day.year + month_index // 12
+    month = month_index % 12 + 1
+    if month == 12:
+        next_month = date(year + 1, 1, 1)
+    else:
+        next_month = date(year, month + 1, 1)
+    last_day = (next_month - timedelta(days=1)).day
+    return date(year, month, min(day.day, last_day))
+
+
+def recurrence_matches_date(rule: dict[str, Any], occurrence_date: date) -> bool:
+    start = date.fromisoformat(rule["start_date"])
+    if occurrence_date < start:
+        return False
+    active_until = rule.get("active_until")
+    if active_until and occurrence_date > date.fromisoformat(active_until):
+        return False
+
+    interval = int(rule["interval"])
+    frequency = rule["frequency"]
+    if frequency == "daily":
+        return (occurrence_date - start).days % interval == 0
+    if frequency == "weekly":
+        weeks = (occurrence_date - start).days // 7
+        if weeks < 0 or weeks % interval != 0:
+            return False
+        weekdays = json.loads(rule["by_weekday"]) if rule.get("by_weekday") else [start.isoweekday()]
+        return occurrence_date.isoweekday() in weekdays
+    if frequency == "monthly":
+        months = (occurrence_date.year - start.year) * 12 + occurrence_date.month - start.month
+        if months < 0 or months % interval != 0:
+            return False
+        month_day = int(rule["by_month_day"] or start.day)
+        return occurrence_date.day == month_day
+    return False
+
+
+def recurrence_date_matches_pattern(rule: dict[str, Any], occurrence_date: date) -> bool:
+    rule_without_end = dict(rule)
+    rule_without_end["active_until"] = None
+    return recurrence_matches_date(rule_without_end, occurrence_date)
+
+
+def expand_recurrence_dates(rule: dict[str, Any], start_day: date, end_day: date) -> list[date]:
+    if end_day < start_day:
+        return []
+    rule_start = date.fromisoformat(rule["start_date"])
+    active_until = date.fromisoformat(rule["active_until"]) if rule.get("active_until") else None
+    current = max(start_day, rule_start)
+    final = min(end_day, active_until) if active_until else end_day
+    if final < current:
+        return []
+
+    dates: list[date] = []
+    while current <= final:
+        if recurrence_matches_date(rule, current):
+            dates.append(current)
+        current += timedelta(days=1)
+    return dates
+
+
+def recurrence_time_delta(item: dict[str, Any], from_date: date, to_date: date) -> timedelta:
+    if item["type"] != "event" or not item.get("start_at") or not item.get("end_at"):
+        return timedelta(0)
+    try:
+        start = datetime.fromisoformat(item["start_at"])
+        end = datetime.fromisoformat(item["end_at"])
+    except ValueError:
+        return timedelta(0)
+    return end - start
+
+
+def build_recurrence_occurrence(
+    item: dict[str, Any],
+    rule: dict[str, Any],
+    occurrence_date: date,
+    status_row: dict[str, Any] | None,
+    query_status: str,
+) -> dict[str, Any] | None:
+    occurrence_status = status_row.get("status") if status_row else None
+    today = datetime.now(LOCAL_TZ).date()
+    effective_status = occurrence_status or ("missed" if occurrence_date < today else "active")
+
+    if query_status != "all":
+        if query_status == "active" and (occurrence_status is not None or occurrence_date < today):
+            return None
+        if query_status in {"completed", "cancelled"} and occurrence_status != query_status:
+            return None
+
+    result = dict(item)
+    result["status"] = effective_status
+    result["recurrence"] = {
+        "rule_id": rule["id"],
+        "occurrence_date": occurrence_date.isoformat(),
+    }
+    result["completed_at"] = status_row.get("completed_at") if status_row and occurrence_status == "completed" else None
+    if item["type"] == "task":
+        result["due_at"] = combine_date_with_item_time(item, occurrence_date)
+    else:
+        result["start_at"] = combine_date_with_item_time(item, occurrence_date)
+        if item.get("end_at") and result["start_at"]:
+            start = datetime.fromisoformat(result["start_at"])
+            result["end_at"] = (start + recurrence_time_delta(item, occurrence_date, occurrence_date)).isoformat()
+
+    if status_row and status_row.get("override_json"):
+        try:
+            overrides = json.loads(status_row["override_json"])
+        except json.JSONDecodeError:
+            overrides = {}
+        if isinstance(overrides, dict):
+            result.update(overrides)
+    return result
+
+
+def fetch_recurrence_rule(conn: sqlite3.Connection, item_id: str) -> dict[str, Any] | None:
+    row = conn.execute("SELECT * FROM recurrence_rules WHERE item_id = ?", (item_id,)).fetchone()
+    return row_to_dict(row) if row else None
+
+
+def fetch_recurrence_statuses(
+    conn: sqlite3.Connection,
+    rule_ids: list[str],
+    start_day: date,
+    end_day: date,
+) -> dict[tuple[str, str], dict[str, Any]]:
+    if not rule_ids:
+        return {}
+    placeholders = ",".join("?" for _ in rule_ids)
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM recurrence_status
+        WHERE rule_id IN ({placeholders})
+          AND occurrence_date >= ?
+          AND occurrence_date <= ?
+        """,
+        (*rule_ids, start_day.isoformat(), end_day.isoformat()),
+    ).fetchall()
+    return {(row["rule_id"], row["occurrence_date"]): row_to_dict(row) for row in rows}
+
+
+def upsert_recurrence_status(
+    conn: sqlite3.Connection,
+    rule: dict[str, Any],
+    item_id: str,
+    occurrence_date: date,
+    status: str | None,
+    ts: str,
+    *,
+    override_json: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if status is not None and status not in VALID_RECURRENCE_STATUS:
+        raise AppError("Recurrence status must be completed or cancelled.")
+    existing = conn.execute(
+        "SELECT * FROM recurrence_status WHERE rule_id = ? AND occurrence_date = ?",
+        (rule["id"], occurrence_date.isoformat()),
+    ).fetchone()
+    completed_at = ts if status == "completed" else None
+    cancelled_at = ts if status == "cancelled" else None
+    override_text = json.dumps(override_json, ensure_ascii=False) if override_json is not None else None
+    if existing:
+        next_status = status if status is not None else existing["status"]
+        next_completed_at = completed_at if status == "completed" else (None if status == "cancelled" else existing["completed_at"])
+        next_cancelled_at = cancelled_at if status == "cancelled" else (None if status == "completed" else existing["cancelled_at"])
+        conn.execute(
+            """
+            UPDATE recurrence_status
+            SET status = ?, override_json = COALESCE(?, override_json),
+                completed_at = ?, cancelled_at = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (next_status, override_text, next_completed_at, next_cancelled_at, ts, existing["id"]),
+        )
+        row_id = existing["id"]
+    else:
+        row_id = make_id("RS")
+        conn.execute(
+            """
+            INSERT INTO recurrence_status (
+              id, rule_id, item_id, occurrence_date, status, override_json,
+              completed_at, cancelled_at, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row_id,
+                rule["id"],
+                item_id,
+                occurrence_date.isoformat(),
+                status,
+                override_text,
+                completed_at,
+                cancelled_at,
+                ts,
+                ts,
+            ),
+        )
+    return row_to_dict(conn.execute("SELECT * FROM recurrence_status WHERE id = ?", (row_id,)).fetchone())
+
+
+def fetch_recurring_items(conn: sqlite3.Connection, item_type: str | None = None) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    type_sql = "AND items.type = ?" if item_type else ""
+    params: tuple[Any, ...] = (item_type,) if item_type else ()
+    rows = conn.execute(
+        f"""
+        SELECT
+          items.*,
+          recurrence_rules.id AS rule_id,
+          recurrence_rules.frequency AS rule_frequency,
+          recurrence_rules.interval AS rule_interval,
+          recurrence_rules.by_weekday AS rule_by_weekday,
+          recurrence_rules.by_month_day AS rule_by_month_day,
+          recurrence_rules.start_date AS rule_start_date,
+          recurrence_rules.active_until AS rule_active_until,
+          recurrence_rules.timezone AS rule_timezone,
+          recurrence_rules.created_at AS rule_created_at,
+          recurrence_rules.updated_at AS rule_updated_at
+        FROM items
+        JOIN recurrence_rules ON recurrence_rules.item_id = items.id
+        WHERE 1 = 1
+          {type_sql}
+        ORDER BY items.created_at, items.id
+        """,
+        params,
+    ).fetchall()
+
+    result: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for row in rows:
+        data = row_to_dict(row)
+        item = {key: data[key] for key in ITEMS_BACKUP_TABLE_COLUMNS["items"]}
+        rule = {
+            "id": data["rule_id"],
+            "item_id": data["id"],
+            "frequency": data["rule_frequency"],
+            "interval": data["rule_interval"],
+            "by_weekday": data["rule_by_weekday"],
+            "by_month_day": data["rule_by_month_day"],
+            "start_date": data["rule_start_date"],
+            "active_until": data["rule_active_until"],
+            "timezone": data["rule_timezone"],
+            "created_at": data["rule_created_at"],
+            "updated_at": data["rule_updated_at"],
+        }
+        result.append((item, rule))
+    return result
+
+
+def query_recurrence_occurrences(
+    conn: sqlite3.Connection,
+    item_type: str,
+    start_day: date,
+    end_day: date,
+    status: str,
+) -> list[dict[str, Any]]:
+    recurring = fetch_recurring_items(conn, item_type)
+    rule_ids = [rule["id"] for _, rule in recurring]
+    statuses = fetch_recurrence_statuses(conn, rule_ids, start_day, end_day)
+    occurrences: list[dict[str, Any]] = []
+
+    for item, rule in recurring:
+        dates = expand_recurrence_dates(rule, start_day, end_day)
+        for occurrence_date in dates:
+            status_row = statuses.get((rule["id"], occurrence_date.isoformat()))
+            if item["status"] != "active" and not status_row:
+                continue
+            occurrence = build_recurrence_occurrence(item, rule, occurrence_date, status_row, status)
+            if occurrence:
+                occurrences.append(occurrence)
+
+    time_key = "due_at" if item_type == "task" else "start_at"
+    return sorted(occurrences, key=lambda row: (row.get(time_key) or "", row.get("created_at") or ""))
+
+
+def find_next_recurrence_occurrences(
+    conn: sqlite3.Connection,
+    item_type: str,
+    after_day: date,
+    *,
+    limit_days: int = 366,
+) -> list[dict[str, Any]]:
+    end_day = after_day + timedelta(days=limit_days)
+    occurrences: list[dict[str, Any]] = []
+    for item, rule in fetch_recurring_items(conn, item_type):
+        if item["status"] != "active":
+            continue
+        for occurrence_date in expand_recurrence_dates(rule, after_day, end_day):
+            statuses = fetch_recurrence_statuses(conn, [rule["id"]], occurrence_date, occurrence_date)
+            status_row = statuses.get((rule["id"], occurrence_date.isoformat()))
+            occurrence = build_recurrence_occurrence(item, rule, occurrence_date, status_row, "active")
+            if occurrence:
+                occurrences.append(occurrence)
+                break
+    time_key = "due_at" if item_type == "task" else "start_at"
+    return sorted(occurrences, key=lambda row: (row.get(time_key) or "", row.get("created_at") or ""))
 
 
 def resolve_query_range(
@@ -925,6 +1413,7 @@ def query_range(
                     SELECT * FROM items
                     WHERE type = 'event'
                       {item_status_sql}
+                      AND NOT EXISTS (SELECT 1 FROM recurrence_rules WHERE recurrence_rules.item_id = items.id)
                       AND start_at IS NOT NULL
                       AND start_at >= ?
                       AND start_at < ?
@@ -940,6 +1429,7 @@ def query_range(
                     SELECT * FROM items
                     WHERE type = 'event'
                       AND status = 'active'
+                      AND NOT EXISTS (SELECT 1 FROM recurrence_rules WHERE recurrence_rules.item_id = items.id)
                       AND start_at IS NOT NULL
                       AND start_at >= ?
                     ORDER BY start_at, created_at
@@ -947,9 +1437,20 @@ def query_range(
                     """,
                     (end_exclusive,),
                 ).fetchone()
+            recurring_events = query_recurrence_occurrences(conn, "event", start_day, end_day, status)
+            events_in_range.extend(recurring_events)
+            events_in_range.sort(key=lambda row: (row.get("start_at") or "", row.get("created_at") or ""))
+
+            next_upcoming = row_to_dict(next_upcoming_event) if next_upcoming_event else None
+            if status in {"active", "all"}:
+                next_recurring_events = find_next_recurrence_occurrences(conn, "event", end_day + timedelta(days=1))
+                candidates = [candidate for candidate in [next_upcoming, *next_recurring_events] if candidate]
+                if candidates:
+                    next_upcoming = sorted(candidates, key=lambda row: (row.get("start_at") or "", row.get("created_at") or ""))[0]
+
             payload["events"] = {
                 "in_range": events_in_range,
-                "next_upcoming": row_to_dict(next_upcoming_event) if next_upcoming_event else None,
+                "next_upcoming": next_upcoming,
             }
 
         if include_tasks:
@@ -960,6 +1461,7 @@ def query_range(
                     SELECT * FROM items
                     WHERE type = 'task'
                       {item_status_sql}
+                      AND NOT EXISTS (SELECT 1 FROM recurrence_rules WHERE recurrence_rules.item_id = items.id)
                       AND due_at IS NOT NULL
                       AND due_at >= ?
                       AND due_at < ?
@@ -978,6 +1480,7 @@ def query_range(
                         SELECT * FROM items
                         WHERE type = 'task'
                           AND status = 'active'
+                          AND NOT EXISTS (SELECT 1 FROM recurrence_rules WHERE recurrence_rules.item_id = items.id)
                           AND due_at IS NOT NULL
                           AND due_at < ?
                         ORDER BY due_at, created_at
@@ -992,6 +1495,7 @@ def query_range(
                         SELECT * FROM items
                         WHERE type = 'task'
                           AND status = 'active'
+                          AND NOT EXISTS (SELECT 1 FROM recurrence_rules WHERE recurrence_rules.item_id = items.id)
                           AND due_at IS NOT NULL
                           AND due_at >= ?
                         ORDER BY due_at, created_at
@@ -1006,12 +1510,20 @@ def query_range(
                     SELECT * FROM items
                     WHERE type = 'task'
                       {item_status_sql}
+                      AND NOT EXISTS (SELECT 1 FROM recurrence_rules WHERE recurrence_rules.item_id = items.id)
                       AND due_at IS NULL
                     ORDER BY created_at
                     """,
                     item_status_params,
                 )
             ]
+            recurring_tasks_due_in_range = query_recurrence_occurrences(conn, "task", start_day, end_day, status)
+            tasks_due_in_range.extend(recurring_tasks_due_in_range)
+            tasks_due_in_range.sort(key=lambda row: (row.get("due_at") or "", row.get("created_at") or ""))
+            if status in {"active", "all"}:
+                upcoming_tasks.extend(find_next_recurrence_occurrences(conn, "task", end_day + timedelta(days=1)))
+                upcoming_tasks.sort(key=lambda row: (row.get("due_at") or "", row.get("created_at") or ""))
+
             payload["tasks"] = {
                 "overdue_before_range": overdue_tasks,
                 "due_in_range": tasks_due_in_range,
@@ -1059,6 +1571,19 @@ CLEARABLE_UPDATE_FIELDS = {
     "due_at",
     "start_at",
     "end_at",
+    "project",
+    "people",
+    "location",
+}
+
+RECURRENCE_OVERRIDE_FIELDS = {
+    "title",
+    "content",
+    "confidence",
+    "due_at",
+    "start_at",
+    "end_at",
+    "all_day",
     "project",
     "people",
     "location",
@@ -1154,13 +1679,134 @@ def update_item_fields(
     return updated
 
 
-def complete_item(config: AppConfig, item_id: str, note: str | None) -> None:
+def close_ended_recurrences(conn: sqlite3.Connection, ts: str) -> list[dict[str, Any]]:
+    today = datetime.now(LOCAL_TZ).date().isoformat()
+    rows = conn.execute(
+        """
+        SELECT items.*
+        FROM items
+        JOIN recurrence_rules ON recurrence_rules.item_id = items.id
+        WHERE items.status = 'active'
+          AND recurrence_rules.active_until IS NOT NULL
+          AND recurrence_rules.active_until < ?
+        ORDER BY items.created_at, items.id
+        """,
+        (today,),
+    ).fetchall()
+    closed: list[dict[str, Any]] = []
+    for row in rows:
+        item = row_to_dict(row)
+        before = dict(item)
+        conn.execute(
+            """
+            UPDATE items
+            SET status = 'completed', completed_at = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (ts, ts, item["id"]),
+        )
+        updated = row_to_dict(conn.execute("SELECT * FROM items WHERE id = ?", (item["id"],)).fetchone())
+        insert_item_event(
+            conn,
+            item_id=item["id"],
+            record_id=item["created_from_record_id"],
+            action="complete",
+            before_json=before,
+            after_json=updated,
+            confidence=1.0,
+            note="recurrence plan ended",
+            ts=ts,
+        )
+        closed.append(updated)
+    return closed
+
+
+def choose_default_occurrence_date(conn: sqlite3.Connection, item: dict[str, Any], rule: dict[str, Any]) -> tuple[date | None, bool]:
+    today = datetime.now(LOCAL_TZ).date()
+    if recurrence_matches_date(rule, today):
+        status_row = conn.execute(
+            "SELECT status FROM recurrence_status WHERE rule_id = ? AND occurrence_date = ?",
+            (rule["id"], today.isoformat()),
+        ).fetchone()
+        if status_row is None:
+            return today, True
+
+    start = date.fromisoformat(rule["start_date"])
+    current = today - timedelta(days=1)
+    floor = max(start, today - timedelta(days=366))
+    while current >= floor:
+        if recurrence_matches_date(rule, current):
+            status_row = conn.execute(
+                "SELECT status FROM recurrence_status WHERE rule_id = ? AND occurrence_date = ?",
+                (rule["id"], current.isoformat()),
+            ).fetchone()
+            if status_row is None:
+                return current, True
+        current -= timedelta(days=1)
+
+    current = today + timedelta(days=1)
+    ceiling = today + timedelta(days=366)
+    while current <= ceiling:
+        if recurrence_matches_date(rule, current):
+            status_row = conn.execute(
+                "SELECT status FROM recurrence_status WHERE rule_id = ? AND occurrence_date = ?",
+                (rule["id"], current.isoformat()),
+            ).fetchone()
+            if status_row is None:
+                return current, True
+        current += timedelta(days=1)
+    return None, False
+
+
+def complete_item(config: AppConfig, item_id: str, note: str | None, occurrence_date_text: str | None = None) -> None:
     ensure_initialized(config.db_path)
-    with connect(config.db_path) as conn:
+    ts = now_iso()
+    with connect(config.db_path, writable=True) as conn, transaction(conn):
+        closed_recurrences = close_ended_recurrences(conn, ts)
         row = conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
-    if row is None:
-        raise AppError(f"Item not found: {item_id}")
-    item = row_to_dict(row)
+        if row is None:
+            raise AppError(f"Item not found: {item_id}")
+        item = row_to_dict(row)
+        rule = fetch_recurrence_rule(conn, item_id)
+        if rule:
+            if item["status"] == "cancelled":
+                raise AppError("Cancelled recurring items cannot be completed.")
+            if item["status"] == "completed":
+                print_json({"status": "already_completed", "item": item, "closed_recurrences": closed_recurrences})
+                return
+            if occurrence_date_text:
+                occurrence_date = parse_iso_date(occurrence_date_text, "--occurrence-date")
+                auto_selected = False
+            else:
+                occurrence_date, auto_selected = choose_default_occurrence_date(conn, item, rule)
+                if occurrence_date is None:
+                    print_json(
+                        {
+                            "status": "requires_occurrence_date",
+                            "message": "No default recurring occurrence was found. Specify --occurrence-date.",
+                            "requires": ["--occurrence-date"],
+                            "closed_recurrences": closed_recurrences,
+                        }
+                    )
+                    return
+            if not recurrence_date_matches_pattern(rule, occurrence_date):
+                raise AppError("The requested occurrence date does not match the recurrence rule.")
+            status_row = upsert_recurrence_status(conn, rule, item_id, occurrence_date, "completed", ts)
+            print_json(
+                {
+                    "status": "completed",
+                    "item": item,
+                    "recurrence": {
+                        "rule_id": rule["id"],
+                        "occurrence_date": occurrence_date.isoformat(),
+                        "auto_selected": auto_selected,
+                    },
+                    "recurrence_status": status_row,
+                    "closed_recurrences": closed_recurrences,
+                }
+            )
+            return
+
     if item["status"] == "completed":
         print_json({"status": "already_completed", "item": item})
         return
@@ -1170,13 +1816,53 @@ def complete_item(config: AppConfig, item_id: str, note: str | None) -> None:
     print_json({"status": "completed", "item": updated})
 
 
-def cancel_item(config: AppConfig, item_id: str, note: str | None) -> None:
+def requires_scope_payload(action: str) -> dict[str, Any]:
+    return {
+        "status": "requires_scope",
+        "message": f"This is a recurring item. Specify whether to {action} one occurrence or the whole series.",
+        "allowed_scopes": ["occurrence", "series"],
+        "requires": ["--scope", "--occurrence-date when --scope occurrence"],
+    }
+
+
+def cancel_item(
+    config: AppConfig,
+    item_id: str,
+    note: str | None,
+    scope: str | None = None,
+    occurrence_date_text: str | None = None,
+) -> None:
     ensure_initialized(config.db_path)
     with connect(config.db_path) as conn:
         row = conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+        rule = fetch_recurrence_rule(conn, item_id) if row else None
     if row is None:
         raise AppError(f"Item not found: {item_id}")
     item = row_to_dict(row)
+    if rule:
+        if scope is None:
+            print_json(requires_scope_payload("cancel"))
+            return
+        if scope == "occurrence":
+            if not occurrence_date_text:
+                raise AppError("--occurrence-date is required when --scope occurrence.")
+            occurrence_date = parse_iso_date(occurrence_date_text, "--occurrence-date")
+            if not recurrence_date_matches_pattern(rule, occurrence_date):
+                raise AppError("The requested occurrence date does not match the recurrence rule.")
+            ts = now_iso()
+            with connect(config.db_path, writable=True) as conn, transaction(conn):
+                status_row = upsert_recurrence_status(conn, rule, item_id, occurrence_date, "cancelled", ts)
+            print_json(
+                {
+                    "status": "cancelled",
+                    "item": item,
+                    "recurrence": {"rule_id": rule["id"], "occurrence_date": occurrence_date.isoformat()},
+                    "recurrence_status": status_row,
+                }
+            )
+            return
+        if scope != "series":
+            raise AppError("--scope must be occurrence or series.")
     if item["status"] == "cancelled":
         print_json({"status": "already_cancelled", "item": item})
         return
@@ -1224,6 +1910,45 @@ def update_item(config: AppConfig, args: argparse.Namespace) -> None:
     for field, value in cli_fields.items():
         if value is not None:
             updates[field] = value
+    with connect(config.db_path) as conn:
+        rule = fetch_recurrence_rule(conn, args.item_id)
+    if rule:
+        if args.scope is None:
+            print_json(requires_scope_payload("update"))
+            return
+        if args.scope == "occurrence":
+            if not args.occurrence_date:
+                raise AppError("--occurrence-date is required when --scope occurrence.")
+            occurrence_date = parse_iso_date(args.occurrence_date, "--occurrence-date")
+            if not recurrence_date_matches_pattern(rule, occurrence_date):
+                raise AppError("The requested occurrence date does not match the recurrence rule.")
+            override_updates = {field: value for field, value in updates.items() if field in RECURRENCE_OVERRIDE_FIELDS}
+            unsupported = sorted(set(updates) - RECURRENCE_OVERRIDE_FIELDS)
+            if unsupported:
+                raise AppError(f"Cannot update occurrence field(s): {', '.join(unsupported)}")
+            if not override_updates:
+                raise AppError("No occurrence update fields provided.")
+            ts = now_iso()
+            with connect(config.db_path, writable=True) as conn, transaction(conn):
+                status_row = upsert_recurrence_status(
+                    conn,
+                    rule,
+                    args.item_id,
+                    occurrence_date,
+                    None,
+                    ts,
+                    override_json=override_updates,
+                )
+            print_json(
+                {
+                    "status": "updated",
+                    "recurrence": {"rule_id": rule["id"], "occurrence_date": occurrence_date.isoformat()},
+                    "recurrence_status": status_row,
+                }
+            )
+            return
+        if args.scope != "series":
+            raise AppError("--scope must be occurrence or series.")
     updated = update_item_fields(config, args.item_id, updates, note=args.note)
     print_json({"status": "updated", "item": updated})
 
@@ -1275,15 +2000,22 @@ def summarize_backup_payload(payload: dict[str, Any]) -> dict[str, Any]:
     review_counts: dict[str, int] = {}
     for review in tables["review_queue"]:
         review_counts[review["status"]] = review_counts.get(review["status"], 0) + 1
+    recurrence_status_counts: dict[str, int] = {}
+    for occurrence in tables.get("recurrence_status", []):
+        occurrence_status = occurrence.get("status") or "override"
+        recurrence_status_counts[occurrence_status] = recurrence_status_counts.get(occurrence_status, 0) + 1
     return {
         "records": len(tables["records"]),
         "items": len(tables["items"]),
         "tasks": item_counts.get("task", 0),
         "events": item_counts.get("event", 0),
         "relations": len(tables["item_relations"]),
+        "recurrence_rules": len(tables.get("recurrence_rules", [])),
+        "recurrence_status": len(tables.get("recurrence_status", [])),
         "item_events": len(tables["item_events"]),
         "reviews": len(tables["review_queue"]),
         "item_status_counts": status_counts,
+        "recurrence_status_counts": recurrence_status_counts,
         "review_status_counts": review_counts,
     }
 
@@ -1535,14 +2267,19 @@ def build_parser() -> argparse.ArgumentParser:
     update.add_argument("--location")
     update.add_argument("--clear", action="append", choices=sorted(CLEARABLE_UPDATE_FIELDS), help="Clear a nullable field. Repeatable.")
     update.add_argument("--note")
+    update.add_argument("--scope", choices=["occurrence", "series"], help="For recurring items: update one occurrence or the whole series.")
+    update.add_argument("--occurrence-date", help="Recurring occurrence date in YYYY-MM-DD.")
 
     complete = subparsers.add_parser("complete", help="Mark a task or event item completed by id.")
     complete.add_argument("--item-id", required=True)
     complete.add_argument("--note")
+    complete.add_argument("--occurrence-date", help="Recurring occurrence date in YYYY-MM-DD. Defaults to the nearest open occurrence.")
 
     cancel = subparsers.add_parser("cancel", help="Soft-delete an item by marking it cancelled.")
     cancel.add_argument("--item-id", required=True)
     cancel.add_argument("--note")
+    cancel.add_argument("--scope", choices=["occurrence", "series"], help="For recurring items: cancel one occurrence or the whole series.")
+    cancel.add_argument("--occurrence-date", help="Recurring occurrence date in YYYY-MM-DD.")
 
     export_backup = subparsers.add_parser("export-items-backup", help="Export all items to items-backup.txt.")
     export_backup.add_argument("--output", default=str(APP_DIR / "backup" / "items-backup.txt"))
@@ -1574,9 +2311,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "update":
             update_item(config, args)
         elif args.command == "complete":
-            complete_item(config, args.item_id, args.note)
+            complete_item(config, args.item_id, args.note, args.occurrence_date)
         elif args.command == "cancel":
-            cancel_item(config, args.item_id, args.note)
+            cancel_item(config, args.item_id, args.note, args.scope, args.occurrence_date)
         elif args.command == "export-items-backup":
             export_items_backup(config, args.output)
         elif args.command == "verify-items-backup":

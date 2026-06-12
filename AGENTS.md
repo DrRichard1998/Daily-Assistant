@@ -64,6 +64,12 @@ extensions/catalog.md
 
 常见信号：会议、开会、课程、电话、面试、预约、考试、直播、出席、到场、参加。
 
+定时/周期性任务或日程：用户表达“每天”“每周”“每月”“每隔 N 天/周/月”“接下来一周每天”等重复安排时，仍然只创建一个 `task` 或 `event` 母事项，并在该 item 中添加 `recurrence` 字段；不要提前创建多条普通 item。
+
+定时 item 的判定方式：数据库中存在 `recurrence_rules.item_id = items.id` 的事项就是定时 item；不存在对应规则的是普通 item。不要使用额外的 `is_recurring` 字段。
+
+定时计划的整体状态由 `items.status` 表示：`active` 表示计划进行中，`completed` 表示有限计划自然到期完成，`cancelled` 表示用户主动取消整个计划。某一次的打卡或取消由 `recurrence_status.status` 表示，不改变母 item 的 `items.status`。
+
 一句话同时包含准备事项和到点发生的事件时，拆成多个 `item`，并用 `prepares_for` 关联准备任务和对应日程。
 
 如果类型、日期语义会影响 `task`/`event` 判断，或日程缺少发生时间，不要强行创建任务或日程，应创建 `review` 或向用户提出一个最小澄清问题。
@@ -143,6 +149,17 @@ python .\assistant.py query --date YYYY-MM-DD --type reviews --status active
 
 回复只总结 CLI 返回的数据，不补充未查询到的信息。CLI 返回的非空列表字段必须覆盖；可以合并展示，但不得遗漏。
 
+查询结果中如果某条 item 带有：
+
+```json
+"recurrence": {
+  "rule_id": "RR-...",
+  "occurrence_date": "YYYY-MM-DD"
+}
+```
+
+说明它是定时规则展开出的某一次，不是独立创建的普通 item。回复时可按当天任务/日程展示，但不要说它是新建的普通事项。查询活跃定时实例时必须按 `recurrence_rules.active_until` 过滤，超过 `active_until` 的实例不再显示为 active。
+
 ## 7. 修改路径
 
 适用：用户表示要修改某个任务或日程的任意用户输入字段，例如标题、内容、截止时间、开始时间、结束时间、全天、项目、人员、地点、类型或状态。
@@ -166,6 +183,8 @@ python .\assistant.py update --item-id ITEM_ID --due-at 2026-06-16T23:59:00+08:0
 python .\assistant.py update --item-id ITEM_ID --start-at 2026-06-16T14:00:00+08:00 --end-at 2026-06-16T15:00:00+08:00
 python .\assistant.py update --item-id ITEM_ID --location 会议室A --people [张三,李四]
 python .\assistant.py update --item-id ITEM_ID --clear due_at
+python .\assistant.py update --item-id ITEM_ID --scope occurrence --occurrence-date 2026-06-16 --title 新标题
+python .\assistant.py update --item-id ITEM_ID --scope series --title 新标题
 ```
 
 支持修改的字段：
@@ -173,6 +192,8 @@ python .\assistant.py update --item-id ITEM_ID --clear due_at
 ```text
 type, title, content, status, confidence, due_at, start_at, end_at, all_day, project, people, location
 ```
+
+修改定时 item 时，如果用户没有明确说“这一次”或“整个定时任务”，不要猜测；运行 CLI 后若返回 `requires_scope`，只问一个最小澄清问题：“这是一个定时任务。你要修改这一次，还是整个定时任务？”用户选择“这一次”时使用 `--scope occurrence --occurrence-date YYYY-MM-DD`；用户选择“整个定时任务”时使用 `--scope series`。
 
 ## 8. 完成路径
 
@@ -184,6 +205,14 @@ type, title, content, status, confidence, due_at, start_at, end_at, all_day, pro
 2. 如果没有 `item_id`，先运行 `python .\assistant.py query --status active`。
 3. 如果能唯一、高置信度匹配，完成该事项。
 4. 如果无匹配或多匹配，不猜测，只问一个最小澄清问题。
+
+完成定时 item 时默认是完成某一次打卡，不是完成整个计划。若用户没有明确日期，`assistant.py complete` 会默认选择最近一条应完成的实例，并在返回中说明 `recurrence.occurrence_date` 和是否 `auto_selected`；回复必须说明实际完成的是哪一天。若用户明确日期，使用：
+
+```powershell
+python .\assistant.py complete --item-id ITEM_ID --occurrence-date YYYY-MM-DD
+```
+
+每次执行 `complete` 前，CLI 会自动将 `active_until` 早于今天且仍为 `active` 的定时母 item 标记为 `completed`，表示有限周期计划自然到期完成；历史打卡记录保留不变。
 
 ## 9. 删除/取消路径
 
@@ -198,6 +227,20 @@ type, title, content, status, confidence, due_at, start_at, end_at, all_day, pro
 3. 如果能唯一、高置信度匹配，取消该事项。
 4. 如果无匹配或多匹配，不猜测，只问一个最小澄清问题。
 5. 回复时可以按用户语义说“已删除”或“已取消”，但不要声称已从数据库物理删除。
+
+取消定时 item 时必须区分“某一次”或“整个定时任务”。取消某一次使用：
+
+```powershell
+python .\assistant.py cancel --item-id ITEM_ID --scope occurrence --occurrence-date YYYY-MM-DD
+```
+
+这会写入 `recurrence_status.status = cancelled`，只让那一天不再出现。取消整个定时任务使用：
+
+```powershell
+python .\assistant.py cancel --item-id ITEM_ID --scope series
+```
+
+这会将母 item 标记为 `cancelled`，表示用户主动放弃整个计划。若 CLI 返回 `requires_scope`，只问：“这是一个定时任务。你要取消这一次，还是整个定时任务？”
 
 ## 10. 维护路径
 
@@ -257,9 +300,9 @@ type, title, content, status, confidence, due_at, start_at, end_at, all_day, pro
 
 - `apply-json` 目前只支持 `create`。
 - `apply-json` 返回的 `verification.read_after_write = true` 表示程序已完成写后读取。
-- `update` 目前用明确 `item_id` 修改任务或日程字段；自然语言无 `item_id` 时应先查询并高置信匹配。
-- `complete` 目前用明确 `item_id` 完成任务或日程。
-- `cancel` 目前用明确 `item_id` 软删除任务或日程。
+- `update` 目前用明确 `item_id` 修改任务或日程字段；自然语言无 `item_id` 时应先查询并高置信匹配。定时 item 修改必须区分 `--scope occurrence` 或 `--scope series`。
+- `complete` 目前用明确 `item_id` 完成任务或日程。定时 item 完成某次时可省略 `--occurrence-date`，CLI 会默认选择最近一条应完成的实例。
+- `cancel` 目前用明确 `item_id` 软删除任务或日程。定时 item 取消必须区分某一次或整个定时任务。
 - 本目录的数据写入只通过 `assistant.py` 完成。
 
 ## 14. 异常、初始化与环境处理
@@ -389,6 +432,30 @@ extensions/install.md
   }
 }
 ```
+
+创建定时任务：
+
+```json
+{
+  "action": "create",
+  "temp_id": "task_1",
+  "item": {
+    "type": "task",
+    "title": "吃水果",
+    "status": "active",
+    "due_at": "2026-06-13T09:00:00+08:00",
+    "confidence": 0.92,
+    "recurrence": {
+      "frequency": "daily",
+      "interval": 1,
+      "start_date": "2026-06-13",
+      "active_until": "2026-06-20"
+    }
+  }
+}
+```
+
+`recurrence.frequency` 支持 `daily`、`weekly`、`monthly`；`interval` 表示每 N 天/周/月；`weekly` 可使用 `by_weekday`，取值为 1 到 7，分别代表周一到周日；`monthly` 可使用 `by_month_day`；`active_until` 可为空，表示持续重复。某次完成或取消不写在创建 JSON 里，后续由 `complete` 或 `cancel` 命令写入 `recurrence_status`。
 
 创建无明确截止日期的任务：
 

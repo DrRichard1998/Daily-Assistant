@@ -8,7 +8,7 @@ DailyAssistant 是一个本地运行的任务和日程助手。它使用 LLM 理
 
 ## 当前版本
 
-- 应用版本：`DailyAssistant 1.1.0`
+- 应用版本：`DailyAssistant 2.0.0`
 - 版本来源：`assistant.py` 中的 `APP_VERSION`
 - 查看版本：
 
@@ -214,3 +214,15 @@ extensions/catalog.md
 - `backup`：备份和恢复用户数据。
 - `update`：从 GitHub 仓库检查并应用程序更新。
 - `daily-work`：生成每日任务清单自动化。
+
+## 更新日志
+
+### 2.0.0
+
+- 新增定时/周期性任务和日程支持：`apply-json` 可在 item 中写入 `recurrence`，支持 `daily`、`weekly`、`monthly`、`interval`、`by_weekday`、`by_month_day` 和 `active_until`。
+- 查询命令保持不变，`query` 会按 `recurrence_rules` 在查询范围内展开周期实例，并用 `active_until` 过滤已结束的计划；周期实例返回 `recurrence.rule_id` 和 `recurrence.occurrence_date`。
+- 支持打卡：对定时 item 执行 `complete` 会写入某次 `recurrence_status.status = completed`，不会把母 item 标记为完成；未指定日期时默认选择最近一条应完成的实例。
+- 支持取消某次或整个定时任务：`cancel --scope occurrence --occurrence-date YYYY-MM-DD` 取消某次，`cancel --scope series` 取消整个计划。
+- 支持修改某次或整个定时任务：`update --scope occurrence --occurrence-date YYYY-MM-DD` 写入某次覆盖字段，`update --scope series` 修改母 item。
+- 有限周期计划到期后，在下一次 `complete` 前自动把母 item 标记为 `completed`；历史打卡记录保留。
+- 备份和恢复已包含 `recurrence_rules` 和 `recurrence_status` 两张新表。
