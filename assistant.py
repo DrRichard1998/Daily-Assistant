@@ -590,6 +590,7 @@ def insert_item_event(
     confidence: float | None,
     note: str | None,
     ts: str,
+    before_json: dict[str, Any] | None = None,
 ) -> None:
     conn.execute(
         """
@@ -604,7 +605,7 @@ def insert_item_event(
             item_id,
             record_id,
             action,
-            None,
+            json.dumps(before_json, ensure_ascii=False) if before_json is not None else None,
             json.dumps(after_json, ensure_ascii=False) if after_json is not None else None,
             confidence,
             note,
@@ -1038,94 +1039,193 @@ def query_range(
     print_json(payload)
 
 
-def complete_item(config: AppConfig, item_id: str, note: str | None) -> None:
+UPDATE_ITEM_FIELDS = {
+    "type",
+    "title",
+    "content",
+    "status",
+    "confidence",
+    "due_at",
+    "start_at",
+    "end_at",
+    "all_day",
+    "project",
+    "people",
+    "location",
+}
+CLEARABLE_UPDATE_FIELDS = {
+    "content",
+    "confidence",
+    "due_at",
+    "start_at",
+    "end_at",
+    "project",
+    "people",
+    "location",
+}
+
+
+def normalize_update_fields(updates: dict[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    for field, value in updates.items():
+        if field not in UPDATE_ITEM_FIELDS:
+            raise AppError(f"Unsupported update field: {field}")
+        if field in {"type", "status", "all_day"} and value is None:
+            raise AppError(f"`{field}` cannot be cleared.")
+        if field == "type" and value not in VALID_ITEM_TYPES:
+            raise AppError("`type` must be task or event.")
+        if field == "status" and value not in VALID_ITEM_STATUS:
+            raise AppError("`status` is invalid.")
+        if field == "title":
+            if value is None:
+                raise AppError("`title` cannot be cleared.")
+            if not isinstance(value, str) or not value.strip():
+                raise AppError("`title` cannot be empty.")
+            value = value.strip()
+        if field == "all_day":
+            value = int(value)
+            if value not in {0, 1}:
+                raise AppError("`all_day` must be 0 or 1.")
+        if field == "confidence":
+            value = validate_confidence(value, "confidence")
+        if field == "people":
+            value = json_or_none(value, "people")
+        normalized[field] = value
+    return normalized
+
+
+def update_item_fields(
+    config: AppConfig,
+    item_id: str,
+    updates: dict[str, Any],
+    *,
+    action: str = "update",
+    note: str | None = None,
+) -> dict[str, Any]:
     ensure_initialized(config.db_path)
+    normalized = normalize_update_fields(updates)
+    if not normalized:
+        raise AppError("No update fields provided.")
+
     ts = now_iso()
     with connect(config.db_path, writable=True) as conn, transaction(conn):
         row = conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
         if row is None:
             raise AppError(f"Item not found: {item_id}")
         item = row_to_dict(row)
-        if item["type"] != "task":
-            raise AppError("Only task items can be completed.")
-        if item["status"] == "completed":
-            print_json({"status": "already_completed", "item": item})
-            return
-        if item["status"] == "cancelled":
-            raise AppError("Cancelled items cannot be completed.")
         before = dict(item)
+
+        effective = {**item, **normalized}
+        if effective["type"] == "event" and not effective.get("start_at") and not int(effective.get("all_day") or 0):
+            raise AppError("Event items require start_at unless all_day is 1.")
+        if effective["type"] == "task" and not effective.get("due_at") and effective.get("start_at"):
+            raise AppError("Task items cannot use start_at instead of due_at.")
+
+        completed_at = item.get("completed_at")
+        if normalized.get("status") == "completed" and not completed_at:
+            completed_at = ts
+        elif normalized.get("status") in {"active", "cancelled", "needs_review"}:
+            completed_at = None
+
+        set_parts = [f"{field} = ?" for field in normalized]
+        values = list(normalized.values())
+        set_parts.extend(["completed_at = ?", "updated_at = ?"])
+        values.extend([completed_at, ts, item_id])
         conn.execute(
-            """
+            f"""
             UPDATE items
-            SET status = 'completed', completed_at = ?, updated_at = ?
+            SET {", ".join(set_parts)}
             WHERE id = ?
             """,
-            (ts, ts, item_id),
+            values,
         )
         updated = row_to_dict(conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone())
-        conn.execute(
-            """
-            INSERT INTO item_events (
-              id, item_id, record_id, action, before_json, after_json,
-              confidence, note, created_at
-            )
-            VALUES (?, ?, ?, 'complete', ?, ?, ?, ?, ?)
-            """,
-            (
-                make_id("E"),
-                item_id,
-                item["created_from_record_id"],
-                json.dumps(before, ensure_ascii=False),
-                json.dumps(updated, ensure_ascii=False),
-                1.0,
-                note,
-                ts,
-            ),
+        insert_item_event(
+            conn,
+            item_id=item_id,
+            record_id=item["created_from_record_id"],
+            action=action,
+            before_json=before,
+            after_json=updated,
+            confidence=1.0,
+            note=note,
+            ts=ts,
         )
+    return updated
+
+
+def complete_item(config: AppConfig, item_id: str, note: str | None) -> None:
+    ensure_initialized(config.db_path)
+    with connect(config.db_path) as conn:
+        row = conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+    if row is None:
+        raise AppError(f"Item not found: {item_id}")
+    item = row_to_dict(row)
+    if item["status"] == "completed":
+        print_json({"status": "already_completed", "item": item})
+        return
+    if item["status"] == "cancelled":
+        raise AppError("Cancelled items cannot be completed.")
+    updated = update_item_fields(config, item_id, {"status": "completed"}, action="complete", note=note)
     print_json({"status": "completed", "item": updated})
 
 
 def cancel_item(config: AppConfig, item_id: str, note: str | None) -> None:
     ensure_initialized(config.db_path)
-    ts = now_iso()
-    with connect(config.db_path, writable=True) as conn, transaction(conn):
+    with connect(config.db_path) as conn:
         row = conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
-        if row is None:
-            raise AppError(f"Item not found: {item_id}")
-        item = row_to_dict(row)
-        if item["status"] == "cancelled":
-            print_json({"status": "already_cancelled", "item": item})
-            return
-        before = dict(item)
-        conn.execute(
-            """
-            UPDATE items
-            SET status = 'cancelled', completed_at = NULL, updated_at = ?
-            WHERE id = ?
-            """,
-            (ts, item_id),
-        )
-        updated = row_to_dict(conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone())
-        conn.execute(
-            """
-            INSERT INTO item_events (
-              id, item_id, record_id, action, before_json, after_json,
-              confidence, note, created_at
-            )
-            VALUES (?, ?, ?, 'cancel', ?, ?, ?, ?, ?)
-            """,
-            (
-                make_id("E"),
-                item_id,
-                item["created_from_record_id"],
-                json.dumps(before, ensure_ascii=False),
-                json.dumps(updated, ensure_ascii=False),
-                1.0,
-                note,
-                ts,
-            ),
-        )
+    if row is None:
+        raise AppError(f"Item not found: {item_id}")
+    item = row_to_dict(row)
+    if item["status"] == "cancelled":
+        print_json({"status": "already_cancelled", "item": item})
+        return
+    updated = update_item_fields(config, item_id, {"status": "cancelled"}, action="cancel", note=note)
     print_json({"status": "cancelled", "item": updated})
+
+
+def parse_people_arg(value: str | None) -> Any:
+    if value is None:
+        return None
+    text = value.strip()
+    if text.startswith("[") or text.startswith("{"):
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            if text.startswith("[") and text.endswith("]"):
+                values = [part.strip() for part in text[1:-1].split(",")]
+                if values and all(values):
+                    return values
+            raise AppError(f"Invalid people JSON: {exc}") from exc
+    return value
+
+
+def update_item(config: AppConfig, args: argparse.Namespace) -> None:
+    clear_fields = args.clear or []
+    invalid_clear_fields = sorted(set(clear_fields) - CLEARABLE_UPDATE_FIELDS)
+    if invalid_clear_fields:
+        raise AppError(f"Unsupported clear field(s): {', '.join(invalid_clear_fields)}")
+
+    updates: dict[str, Any] = {field: None for field in clear_fields}
+    cli_fields = {
+        "type": args.type,
+        "title": args.title,
+        "content": args.content,
+        "status": args.status,
+        "confidence": args.confidence,
+        "due_at": args.due_at,
+        "start_at": args.start_at,
+        "end_at": args.end_at,
+        "all_day": args.all_day,
+        "project": args.project,
+        "people": parse_people_arg(args.people) if args.people is not None else None,
+        "location": args.location,
+    }
+    for field, value in cli_fields.items():
+        if value is not None:
+            updates[field] = value
+    updated = update_item_fields(config, args.item_id, updates, note=args.note)
+    print_json({"status": "updated", "item": updated})
 
 
 def backup_checksum(data: dict[str, Any]) -> str:
@@ -1419,7 +1519,24 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--type", choices=["task", "event", "reviews"], help="Optional result filter.")
     query.add_argument("--status", choices=["active", "completed", "cancelled", "all"], help="Status filter. Defaults to active.")
 
-    complete = subparsers.add_parser("complete", help="Mark a task item completed by id.")
+    update = subparsers.add_parser("update", help="Update item fields by id.")
+    update.add_argument("--item-id", required=True)
+    update.add_argument("--type", choices=sorted(VALID_ITEM_TYPES))
+    update.add_argument("--title")
+    update.add_argument("--content")
+    update.add_argument("--status", choices=sorted(VALID_ITEM_STATUS))
+    update.add_argument("--confidence", type=float)
+    update.add_argument("--due-at", dest="due_at")
+    update.add_argument("--start-at", dest="start_at")
+    update.add_argument("--end-at", dest="end_at")
+    update.add_argument("--all-day", dest="all_day", type=int, choices=[0, 1])
+    update.add_argument("--project")
+    update.add_argument("--people", help="String or JSON array/object.")
+    update.add_argument("--location")
+    update.add_argument("--clear", action="append", choices=sorted(CLEARABLE_UPDATE_FIELDS), help="Clear a nullable field. Repeatable.")
+    update.add_argument("--note")
+
+    complete = subparsers.add_parser("complete", help="Mark a task or event item completed by id.")
     complete.add_argument("--item-id", required=True)
     complete.add_argument("--note")
 
@@ -1454,6 +1571,8 @@ def main(argv: list[str] | None = None) -> int:
             apply_json(config, load_json_arg(args.json, args.file, args.base64))
         elif args.command == "query":
             query_range(config, args.date, args.period, args.from_date, args.to_date, args.type, args.status)
+        elif args.command == "update":
+            update_item(config, args)
         elif args.command == "complete":
             complete_item(config, args.item_id, args.note)
         elif args.command == "cancel":
