@@ -29,7 +29,7 @@ APP_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = APP_DIR / "data" / "assistant.sqlite"
 SCHEMA_PATH = APP_DIR / "schema.sql"
 LOCAL_TZ = timezone(timedelta(hours=8))
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 
 VALID_ITEM_TYPES = {"task", "event"}
 VALID_ITEM_STATUS = {"active", "completed", "cancelled", "needs_review"}
@@ -1388,6 +1388,8 @@ def query_range(
     include_tasks = item_type in {None, "task"}
     include_events = item_type in {None, "event"}
     include_reviews = item_type in {None, "reviews"}
+    explicit_range = any(value is not None for value in (date_text, period, from_text, to_text))
+    filter_reviews_by_range = item_type is None or explicit_range
 
     payload: dict[str, Any] = {
         "range": {
@@ -1532,6 +1534,11 @@ def query_range(
             }
 
         if include_reviews:
+            review_range_sql = ""
+            review_params = list(review_status_params)
+            if filter_reviews_by_range:
+                review_range_sql = "AND review_queue.created_at >= ? AND review_queue.created_at < ?"
+                review_params.extend([start, end_exclusive])
             reviews = [
                 row_to_dict(row)
                 for row in conn.execute(
@@ -1541,14 +1548,79 @@ def query_range(
                     JOIN records ON records.id = review_queue.record_id
                     WHERE 1 = 1
                       {review_status_sql}
+                      {review_range_sql}
                     ORDER BY review_queue.created_at
                     """,
-                    review_status_params,
+                    review_params,
                 )
             ]
             payload["reviews"] = reviews
 
     print_json(payload)
+
+
+def fetch_review(conn: sqlite3.Connection, review_id: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT review_queue.*, records.canonical_text
+        FROM review_queue
+        JOIN records ON records.id = review_queue.record_id
+        WHERE review_queue.id = ?
+        """,
+        (review_id,),
+    ).fetchone()
+    return row_to_dict(row) if row else None
+
+
+def update_review(config: AppConfig, review_id: str, status: str, item_id: str | None = None) -> None:
+    ensure_initialized(config.db_path)
+    review_id = review_id.strip()
+    if not review_id:
+        raise AppError("`--review-id` is required.")
+    if status not in VALID_REVIEW_STATUS:
+        raise AppError("`--status` must be open, resolved, or dismissed.")
+
+    item_id = item_id.strip() if item_id is not None else None
+    if item_id == "":
+        raise AppError("`--item-id` cannot be empty.")
+
+    ts = now_iso()
+    resolved_at = None if status == "open" else ts
+    with connect(config.db_path, writable=True) as conn, transaction(conn):
+        existing = fetch_review(conn, review_id)
+        if existing is None:
+            raise AppError(f"Review not found: {review_id}")
+        if item_id is not None:
+            item_row = conn.execute("SELECT id FROM items WHERE id = ?", (item_id,)).fetchone()
+            if item_row is None:
+                raise AppError(f"Item not found: {item_id}")
+
+        set_parts = ["status = ?", "resolved_at = ?"]
+        values: list[Any] = [status, resolved_at]
+        if item_id is not None:
+            set_parts.append("item_id = ?")
+            values.append(item_id)
+        values.append(review_id)
+        conn.execute(
+            f"""
+            UPDATE review_queue
+            SET {", ".join(set_parts)}
+            WHERE id = ?
+            """,
+            values,
+        )
+        updated = fetch_review(conn, review_id)
+
+    print_json(
+        {
+            "status": "ok",
+            "review": updated,
+            "verification": {
+                "read_after_write": True,
+                "review": updated,
+            },
+        }
+    )
 
 
 UPDATE_ITEM_FIELDS = {
@@ -2251,6 +2323,11 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--type", choices=["task", "event", "reviews"], help="Optional result filter.")
     query.add_argument("--status", choices=["active", "completed", "cancelled", "all"], help="Status filter. Defaults to active.")
 
+    review = subparsers.add_parser("review", help="Update a review queue entry by id.")
+    review.add_argument("--review-id", required=True)
+    review.add_argument("--status", required=True, choices=sorted(VALID_REVIEW_STATUS))
+    review.add_argument("--item-id", help="Optional item to associate with the review.")
+
     update = subparsers.add_parser("update", help="Update item fields by id.")
     update.add_argument("--item-id", required=True)
     update.add_argument("--type", choices=sorted(VALID_ITEM_TYPES))
@@ -2308,6 +2385,8 @@ def main(argv: list[str] | None = None) -> int:
             apply_json(config, load_json_arg(args.json, args.file, args.base64))
         elif args.command == "query":
             query_range(config, args.date, args.period, args.from_date, args.to_date, args.type, args.status)
+        elif args.command == "review":
+            update_review(config, args.review_id, args.status, args.item_id)
         elif args.command == "update":
             update_item(config, args)
         elif args.command == "complete":

@@ -8,7 +8,7 @@ DailyAssistant 是一个本地运行的任务和日程助手。它使用 LLM 理
 
 ## 当前版本
 
-- 应用版本：`DailyAssistant 2.0.0`
+- 应用版本：`DailyAssistant 2.1.0`
 - 版本来源：`assistant.py` 中的 `APP_VERSION`
 - 查看版本：
 
@@ -16,7 +16,7 @@ DailyAssistant 是一个本地运行的任务和日程助手。它使用 LLM 理
 python .\assistant.py --version
 ```
 
-当前版本使用本地 SQLite 数据库保存数据，支持记录、查询、完成、取消、待确认和扩展能力；运行环境仍以 Python 3.10+ 和标准库为主，不需要安装第三方 Python 包。
+当前版本使用本地 SQLite 数据库保存数据，支持记录、查询、完成、取消、待确认处理和扩展能力；运行环境仍以 Python 3.10+ 和标准库为主，不需要安装第三方 Python 包。
 
 ## 核心能力
 
@@ -24,7 +24,7 @@ python .\assistant.py --version
 - 查询：查看今天、某天、本周、本月或指定时间范围内的任务和日程。
 - 完成：把明确的任务标记为已完成。
 - 取消：把记错、取消或作废的事项标记为已取消。
-- 待确认：在日期、类型或时间含义不清时，先进入待确认队列。
+- 待确认：在日期、类型或时间含义不清时，先进入待确认队列；澄清后可关闭、作废、重开并关联到实际事项。
 - 扩展：通过 `extensions/` 目录维护安装、备份、更新等可选能力。
 
 ## 项目结构
@@ -129,6 +129,35 @@ python .\assistant.py query --type event --status active
 python .\assistant.py query --type reviews --status active
 ```
 
+待确认状态映射：
+
+- `active`：待处理，对应 `open`。
+- `completed`：已解决，对应 `resolved`。
+- `cancelled`：已作废，对应 `dismissed`。
+- `all`：全部待确认项。
+
+`query --type reviews` 不带日期参数时会查询整个待确认队列；显式传入 `--date`、`--period` 或 `--from/--to` 时，会按待确认项创建时间过滤。
+
+## 处理待确认项
+
+用户补充信息后，先按实际情况创建或更新任务/日程，再关闭对应待确认项：
+
+```powershell
+python .\assistant.py review --review-id REVIEW_ID --status resolved --item-id ITEM_ID
+```
+
+如果某条待确认项是误判、历史遗留或用户确认不需要处理，标记为作废：
+
+```powershell
+python .\assistant.py review --review-id REVIEW_ID --status dismissed
+```
+
+如果误关了待确认项，可以重新打开：
+
+```powershell
+python .\assistant.py review --review-id REVIEW_ID --status open
+```
+
 ## 写入数据
 
 日常使用时，推荐直接让 Codex 根据自然语言生成符合项目规则的 JSON，并通过 `assistant.py apply-json --base64` 写入数据库。
@@ -216,6 +245,14 @@ extensions/catalog.md
 - `daily-work`：生成每日任务清单自动化。
 
 ## 更新日志
+
+### 2.1.0
+
+- 新增 `review` 命令，可用明确的 `review_id` 更新待确认项状态。
+- `review --status resolved --item-id ITEM_ID` 用于在创建或更新事项后关闭待确认项，并关联到实际事项。
+- `review --status dismissed` 用于标记误判、历史遗留或无需处理的待确认项。
+- `review --status open` 用于重新打开误关的待确认项，并清空 `resolved_at`。
+- `query --type reviews` 不带日期参数时查询整个待确认队列；显式传入日期或范围时，按 `review_queue.created_at` 过滤。
 
 ### 2.0.0
 

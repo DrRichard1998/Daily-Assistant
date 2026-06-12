@@ -146,6 +146,7 @@ python .\assistant.py query --date YYYY-MM-DD --type reviews --status active
 - `--type` 可选 `task`、`event`、`reviews`；不传时返回三类内容。
 - `--status` 可选 `active`、`completed`、`cancelled`、`all`；不传时默认 `active`。
 - 当 `--type reviews` 时，`active` 对应 `open`，`completed` 对应 `resolved`，`cancelled` 对应 `dismissed`。
+- `query --type reviews` 不带 `--date`、`--period` 或 `--from/--to` 时，查询整个待确认队列；显式传入日期或范围时，按 `review_queue.created_at` 过滤待确认项。
 
 回复只总结 CLI 返回的数据，不补充未查询到的信息。CLI 返回的非空列表字段必须覆盖；可以合并展示，但不得遗漏。
 
@@ -159,6 +160,28 @@ python .\assistant.py query --date YYYY-MM-DD --type reviews --status active
 ```
 
 说明它是定时规则展开出的某一次，不是独立创建的普通 item。回复时可按当天任务/日程展示，但不要说它是新建的普通事项。查询活跃定时实例时必须按 `recurrence_rules.active_until` 过滤，超过 `active_until` 的实例不再显示为 active。
+
+### 6.1 待确认处理路径
+
+适用：用户补充了待确认事项所需的信息，或确认某条待确认项是误判、历史遗留、不需要处理，或需要重新打开。
+
+待确认项本身通过 `review_queue` 管理；不要直接修改 SQLite。统一使用 `review` 命令更新状态。
+
+常用命令示例：
+
+```powershell
+python .\assistant.py review --review-id REVIEW_ID --status resolved --item-id ITEM_ID
+python .\assistant.py review --review-id REVIEW_ID --status dismissed
+python .\assistant.py review --review-id REVIEW_ID --status open
+```
+
+处理规则：
+
+1. 用户澄清后，如果需要新建任务或日程，先按记录路径使用 `apply-json` 创建 item，再用 `review --status resolved --item-id ITEM_ID` 关闭对应待确认项。
+2. 用户澄清后，如果是补充或修正已有任务/日程，先按修改路径使用 `update --item-id ITEM_ID ...` 更新 item，再用 `review --status resolved --item-id ITEM_ID` 关闭对应待确认项。
+3. 如果待确认项是误判、历史遗留或用户明确表示不需要处理，使用 `review --status dismissed`。
+4. 如果用户要求重新打开误关的待确认项，使用 `review --status open`；这会清空该 review 的 `resolved_at`。
+5. 回复时只报告 CLI 返回的 review 更新结果；不要为同一次 review 状态修改额外查询验证。
 
 ## 7. 修改路径
 
@@ -303,6 +326,7 @@ python .\assistant.py cancel --item-id ITEM_ID --scope series
 - `update` 目前用明确 `item_id` 修改任务或日程字段；自然语言无 `item_id` 时应先查询并高置信匹配。定时 item 修改必须区分 `--scope occurrence` 或 `--scope series`。
 - `complete` 目前用明确 `item_id` 完成任务或日程。定时 item 完成某次时可省略 `--occurrence-date`，CLI 会默认选择最近一条应完成的实例。
 - `cancel` 目前用明确 `item_id` 软删除任务或日程。定时 item 取消必须区分某一次或整个定时任务。
+- `review` 目前用明确 `review_id` 修改待确认项状态，支持 `open`、`resolved`、`dismissed`；可用 `--item-id` 关联已创建或已更新的事项。
 - 本目录的数据写入只通过 `assistant.py` 完成。
 
 ## 14. 异常、初始化与环境处理
