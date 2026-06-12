@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import base64
 import csv
+import hashlib
 import json
 import os
 import sqlite3
@@ -28,6 +29,7 @@ APP_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = APP_DIR / "data" / "assistant.sqlite"
 SCHEMA_PATH = APP_DIR / "schema.sql"
 LOCAL_TZ = timezone(timedelta(hours=8))
+APP_VERSION = "1.0.0"
 
 VALID_ITEM_TYPES = {"task", "event"}
 VALID_ITEM_STATUS = {"active", "completed", "cancelled", "needs_review"}
@@ -36,6 +38,85 @@ VALID_PARSE_STATUS = {"parsed", "needs_review", "ignored", "failed"}
 VALID_RELATIONS = {"prepares_for", "related_to", "duplicate_of"}
 VALID_REVIEW_STATUS = {"open", "resolved", "dismissed"}
 QUERY_REVIEW_STATUS = {"active": "open", "completed": "resolved", "cancelled": "dismissed"}
+ITEMS_BACKUP_FORMAT = "dairyassistant-items-backup"
+ITEMS_BACKUP_VERSION = 1
+ITEMS_BACKUP_BEGIN = "BEGIN_DAIRY_ASSISTANT_ITEMS_BACKUP_JSON"
+ITEMS_BACKUP_END = "END_DAIRY_ASSISTANT_ITEMS_BACKUP_JSON"
+ITEMS_BACKUP_TABLE_COLUMNS = {
+    "records": (
+        "id",
+        "source",
+        "input_type",
+        "canonical_text",
+        "raw_text",
+        "extraction_method",
+        "extraction_confidence",
+        "original_retained",
+        "language",
+        "timezone",
+        "parse_status",
+        "parse_confidence",
+        "created_at",
+        "updated_at",
+    ),
+    "items": (
+        "id",
+        "type",
+        "title",
+        "content",
+        "status",
+        "confidence",
+        "due_at",
+        "start_at",
+        "end_at",
+        "all_day",
+        "project",
+        "people",
+        "location",
+        "created_from_record_id",
+        "created_at",
+        "updated_at",
+        "completed_at",
+    ),
+    "item_relations": (
+        "id",
+        "from_item_id",
+        "to_item_id",
+        "relation_type",
+        "source_record_id",
+        "created_at",
+    ),
+    "item_events": (
+        "id",
+        "item_id",
+        "record_id",
+        "action",
+        "before_json",
+        "after_json",
+        "confidence",
+        "note",
+        "created_at",
+    ),
+    "review_queue": (
+        "id",
+        "record_id",
+        "item_id",
+        "reason",
+        "question",
+        "status",
+        "created_at",
+        "resolved_at",
+    ),
+}
+ITEMS_BACKUP_TABLE_ORDER = {
+    "records": "created_at, id",
+    "items": "created_at, id",
+    "item_relations": "created_at, id",
+    "item_events": "created_at, id",
+    "review_queue": "created_at, id",
+}
+ITEMS_BACKUP_IMPORT_ORDER = ("records", "items", "item_relations", "item_events", "review_queue")
+ITEMS_BACKUP_DELETE_ORDER = tuple(reversed(ITEMS_BACKUP_IMPORT_ORDER))
 
 
 class AppError(Exception):
@@ -232,13 +313,17 @@ def needs_init_payload(db_path: Path) -> dict[str, Any]:
     }
 
 
-def init_db(config: AppConfig) -> None:
+def initialize_database(db_path: Path) -> bool:
     if not SCHEMA_PATH.exists():
         raise AppError(f"Schema not found: {SCHEMA_PATH}")
-    repair_workspace_database_permissions(config.db_path)
-    with connect(config.db_path, writable=True) as conn:
+    repair_workspace_database_permissions(db_path)
+    with connect(db_path, writable=True) as conn:
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
-    permissions_repaired = repair_workspace_database_permissions(config.db_path)
+    return repair_workspace_database_permissions(db_path)
+
+
+def init_db(config: AppConfig) -> None:
+    permissions_repaired = initialize_database(config.db_path)
     print_json({"status": "ok", "db": str(config.db_path), "permissions_repaired": permissions_repaired})
 
 
@@ -1043,8 +1128,278 @@ def cancel_item(config: AppConfig, item_id: str, note: str | None) -> None:
     print_json({"status": "cancelled", "item": updated})
 
 
+def backup_checksum(data: dict[str, Any]) -> str:
+    body = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def fetch_items_backup_data(db_path: Path) -> dict[str, Any]:
+    ensure_initialized(db_path)
+    with connect(db_path) as conn:
+        tables: dict[str, list[dict[str, Any]]] = {}
+        for table, columns in ITEMS_BACKUP_TABLE_COLUMNS.items():
+            column_sql = ", ".join(columns)
+            rows = conn.execute(
+                f"SELECT {column_sql} FROM {table} ORDER BY {ITEMS_BACKUP_TABLE_ORDER[table]}"
+            ).fetchall()
+            tables[table] = [row_to_dict(row) for row in rows]
+
+    return {
+        "format": ITEMS_BACKUP_FORMAT,
+        "version": ITEMS_BACKUP_VERSION,
+        "tables": tables,
+    }
+
+
+def build_items_backup_payload(db_path: Path) -> dict[str, Any]:
+    data = fetch_items_backup_data(db_path)
+    return {
+        "metadata": {
+            "format": ITEMS_BACKUP_FORMAT,
+            "version": ITEMS_BACKUP_VERSION,
+            "created_at": now_iso(),
+            "timezone": "Asia/Shanghai",
+        },
+        "data": data,
+        "checksum": backup_checksum(data),
+    }
+
+
+def summarize_backup_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    tables = payload["data"]["tables"]
+    item_counts: dict[str, int] = {}
+    status_counts: dict[str, int] = {}
+    for item in tables["items"]:
+        item_counts[item["type"]] = item_counts.get(item["type"], 0) + 1
+        status_counts[item["status"]] = status_counts.get(item["status"], 0) + 1
+    review_counts: dict[str, int] = {}
+    for review in tables["review_queue"]:
+        review_counts[review["status"]] = review_counts.get(review["status"], 0) + 1
+    return {
+        "records": len(tables["records"]),
+        "items": len(tables["items"]),
+        "tasks": item_counts.get("task", 0),
+        "events": item_counts.get("event", 0),
+        "relations": len(tables["item_relations"]),
+        "item_events": len(tables["item_events"]),
+        "reviews": len(tables["review_queue"]),
+        "item_status_counts": status_counts,
+        "review_status_counts": review_counts,
+    }
+
+
+def item_time_label(item: dict[str, Any]) -> str:
+    if item["type"] == "task":
+        return item.get("due_at") or "无明确截止日期"
+    if item.get("all_day"):
+        return item.get("start_at") or "全天"
+    return item.get("start_at") or "无开始时间"
+
+
+def format_items_backup_text(payload: dict[str, Any]) -> str:
+    tables = payload["data"]["tables"]
+    summary = summarize_backup_payload(payload)
+    lines = [
+        "# DairyAssistant items-backup.txt",
+        "",
+        "本文件是事项备份文本副本，供备份校验和数据库恢复失败时重建使用。",
+        "请不要手工修改结构化 JSON 区块。",
+        "",
+        "## 概览",
+        f"- 生成时间：{payload['metadata']['created_at']}",
+        f"- 记录数：{summary['records']}",
+        f"- 事项数：{summary['items']}（任务 {summary['tasks']}，日程 {summary['events']}）",
+        f"- 关系数：{summary['relations']}",
+        f"- 事项事件数：{summary['item_events']}",
+        f"- 待确认数：{summary['reviews']}",
+        f"- 校验和：{payload['checksum']}",
+        "",
+        "## 事项",
+    ]
+
+    for item in tables["items"]:
+        lines.append(
+            f"- [{item['type']}/{item['status']}] {item['title']} | 时间：{item_time_label(item)} | ID：{item['id']}"
+        )
+    if not tables["items"]:
+        lines.append("- 无")
+
+    lines.extend(["", "## 待确认"])
+    for review in tables["review_queue"]:
+        question = review.get("question") or "(无问题文本)"
+        lines.append(f"- [{review['status']}] {question} | ID：{review['id']}")
+    if not tables["review_queue"]:
+        lines.append("- 无")
+
+    encoded_payload = base64.b64encode(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).decode("ascii")
+    lines.extend(
+        [
+            "",
+            ITEMS_BACKUP_BEGIN,
+            encoded_payload,
+            ITEMS_BACKUP_END,
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def export_items_backup(config: AppConfig, output_path: str) -> None:
+    out_path = Path(output_path).resolve()
+    if not path_is_under_app(out_path):
+        raise AppError(f"Output path must stay under this project: {APP_DIR}")
+    payload = build_items_backup_payload(config.db_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(format_items_backup_text(payload), encoding="utf-8", newline="\n")
+    print_json(
+        {
+            "status": "ok",
+            "path": str(out_path),
+            "checksum": payload["checksum"],
+            "summary": summarize_backup_payload(payload),
+        }
+    )
+
+
+def read_items_backup_payload(path_text: str) -> dict[str, Any]:
+    path = Path(path_text).resolve()
+    if not path_is_under_app(path):
+        raise AppError(f"Items backup file must stay under this project: {APP_DIR}")
+    if not path.exists():
+        raise AppError(f"Items backup file not found: {path}")
+    text = path.read_text(encoding="utf-8")
+    begin = text.find(ITEMS_BACKUP_BEGIN)
+    end = text.find(ITEMS_BACKUP_END)
+    if begin == -1 or end == -1 or end <= begin:
+        raise AppError("Items backup file is missing the structured JSON block.")
+    encoded = text[begin + len(ITEMS_BACKUP_BEGIN) : end].strip()
+    try:
+        payload = json.loads(base64.b64decode(encoded, validate=True).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AppError(f"Invalid items backup JSON block: {exc}") from exc
+    validate_items_backup_payload(payload)
+    return payload
+
+
+def validate_items_backup_payload(payload: dict[str, Any]) -> None:
+    if not isinstance(payload, dict):
+        raise AppError("Items backup payload must be an object.")
+    metadata = payload.get("metadata")
+    data = payload.get("data")
+    checksum = payload.get("checksum")
+    if not isinstance(metadata, dict) or not isinstance(data, dict) or not isinstance(checksum, str):
+        raise AppError("Items backup payload must contain metadata, data, and checksum.")
+    if metadata.get("format") != ITEMS_BACKUP_FORMAT and data.get("format") != ITEMS_BACKUP_FORMAT:
+        raise AppError("Items backup format is not supported.")
+    if data.get("version") != ITEMS_BACKUP_VERSION:
+        raise AppError(f"Items backup version is not supported: {data.get('version')}")
+    tables = data.get("tables")
+    if not isinstance(tables, dict):
+        raise AppError("Items backup data.tables must be an object.")
+    for table, columns in ITEMS_BACKUP_TABLE_COLUMNS.items():
+        rows = tables.get(table)
+        if not isinstance(rows, list):
+            raise AppError(f"Items backup table is missing or invalid: {table}")
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                raise AppError(f"Items backup row must be an object: {table}[{index}]")
+            missing = [column for column in columns if column not in row]
+            if missing:
+                raise AppError(f"Items backup row {table}[{index}] is missing columns: {', '.join(missing)}")
+    actual_checksum = backup_checksum(data)
+    if actual_checksum != checksum:
+        raise AppError(f"Items backup checksum mismatch: expected {checksum}, got {actual_checksum}")
+
+
+def compare_backup_data(expected: dict[str, Any], actual: dict[str, Any]) -> dict[str, Any]:
+    differences: list[dict[str, Any]] = []
+    expected_tables = expected["tables"]
+    actual_tables = actual["tables"]
+    for table in ITEMS_BACKUP_TABLE_COLUMNS:
+        expected_rows = expected_tables[table]
+        actual_rows = actual_tables[table]
+        if expected_rows != actual_rows:
+            differences.append(
+                {
+                    "table": table,
+                    "expected_count": len(expected_rows),
+                    "actual_count": len(actual_rows),
+                }
+            )
+    return {
+        "ok": not differences,
+        "expected_checksum": backup_checksum(expected),
+        "actual_checksum": backup_checksum(actual),
+        "differences": differences,
+    }
+
+
+def verify_items_backup(config: AppConfig, input_path: str) -> None:
+    payload = read_items_backup_payload(input_path)
+    actual = fetch_items_backup_data(config.db_path)
+    comparison = compare_backup_data(payload["data"], actual)
+    print_json(
+        {
+            "status": "ok" if comparison["ok"] else "mismatch",
+            "summary": summarize_backup_payload(payload),
+            "comparison": comparison,
+        }
+    )
+
+
+def write_items_backup_data_to_db(db_path: Path, data: dict[str, Any]) -> None:
+    tables = data["tables"]
+    initialize_database(db_path)
+    with connect(db_path, writable=True) as conn, transaction(conn):
+        for table in ITEMS_BACKUP_DELETE_ORDER:
+            conn.execute(f"DELETE FROM {table}")
+        for table in ITEMS_BACKUP_IMPORT_ORDER:
+            columns = ITEMS_BACKUP_TABLE_COLUMNS[table]
+            placeholders = ", ".join("?" for _ in columns)
+            column_sql = ", ".join(columns)
+            sql = f"INSERT INTO {table} ({column_sql}) VALUES ({placeholders})"
+            for row in tables[table]:
+                conn.execute(sql, [row[column] for column in columns])
+
+
+def restore_items_from_backup(config: AppConfig, input_path: str) -> None:
+    payload = read_items_backup_payload(input_path)
+    data = payload["data"]
+    config.db_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_db = config.db_path.parent / f".restore-items-{datetime.now(LOCAL_TZ):%Y%m%d-%H%M%S}-{uuid4().hex[:8]}.sqlite"
+    try:
+        write_items_backup_data_to_db(temp_db, data)
+        temp_actual = fetch_items_backup_data(temp_db)
+        temp_comparison = compare_backup_data(data, temp_actual)
+        if not temp_comparison["ok"]:
+            raise AppError(f"Restore staging verification failed: {temp_comparison['differences']}")
+        ensure_database_writable(config.db_path)
+        os.replace(temp_db, config.db_path)
+        repair_workspace_database_permissions(config.db_path)
+    finally:
+        try:
+            if temp_db.exists():
+                temp_db.unlink()
+        except OSError:
+            pass
+
+    actual = fetch_items_backup_data(config.db_path)
+    comparison = compare_backup_data(data, actual)
+    if not comparison["ok"]:
+        raise AppError(f"Restore finished but verification failed: {comparison['differences']}")
+    print_json(
+        {
+            "status": "restored",
+            "source": str(Path(input_path).resolve()),
+            "summary": summarize_backup_payload(payload),
+            "comparison": comparison,
+        }
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="DairyAssistant local SQLite assistant")
+    parser.add_argument("--version", action="version", version=f"DairyAssistant {APP_VERSION}")
     parser.add_argument("--db", default=str(DEFAULT_DB), help="Path to SQLite database.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -1072,6 +1427,15 @@ def build_parser() -> argparse.ArgumentParser:
     cancel.add_argument("--item-id", required=True)
     cancel.add_argument("--note")
 
+    export_backup = subparsers.add_parser("export-items-backup", help="Export all items to items-backup.txt.")
+    export_backup.add_argument("--output", default=str(APP_DIR / "backup" / "items-backup.txt"))
+
+    verify_backup = subparsers.add_parser("verify-items-backup", help="Compare the database with an items-backup.txt file.")
+    verify_backup.add_argument("--file", required=True)
+
+    restore_backup = subparsers.add_parser("restore-items-backup", help="Rebuild database contents from an items-backup.txt file.")
+    restore_backup.add_argument("--file", required=True)
+
     return parser
 
 
@@ -1094,6 +1458,12 @@ def main(argv: list[str] | None = None) -> int:
             complete_item(config, args.item_id, args.note)
         elif args.command == "cancel":
             cancel_item(config, args.item_id, args.note)
+        elif args.command == "export-items-backup":
+            export_items_backup(config, args.output)
+        elif args.command == "verify-items-backup":
+            verify_items_backup(config, args.file)
+        elif args.command == "restore-items-backup":
+            restore_items_from_backup(config, args.file)
         else:
             parser.error(f"Unknown command: {args.command}")
     except NeedsInitError:

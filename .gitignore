@@ -4,5 +4,8 @@ __pycache__/
 .obsidian/
 .cc-connect/
 
+backup/
+*.bak
+
 data/*.sqlite
 data/*.sqlite-*

@@ -261,6 +261,8 @@ python .\assistant.py query --type task --status active
 python .\assistant.py query --type reviews --status active
 ```
 
+注意验证成功安装后，需要删除掉用于验证的条目。
+
 ## 9. 排错流程
 
 排错时必须先读取具体错误文本，再选择对应分支。不要在没有定位原因时反复运行同一条失败命令。
