@@ -69,8 +69,8 @@ python .\assistant.py export-items-backup --output .\backup\.work-backup-YYYYMMD
 
 ```json
 {
-  "app": "DairyAssistant",
-  "app_version": "1.0.5",
+  "app": "DailyAssistant",
+  "app_version": "1.1.0",
   "items_backup_version": 1,
   "created_at": "YYYY-MM-DDTHH:mm:ss+08:00",
   "backup_type": "user_data",
@@ -87,7 +87,7 @@ python .\assistant.py export-items-backup --output .\backup\.work-backup-YYYYMMD
 
 其中：
 
-1. `app_version` 必须取自 `python .\assistant.py --version` 返回的 DairyAssistant 版本号；
+1. `app_version` 必须取自 `python .\assistant.py --version` 返回的 DailyAssistant 版本号；
 2. `items_backup_version` 必须取自刚生成的 `items-backup.txt` 内嵌 JSON 元数据；
 3. 如果任一版本号无法读取，应停止备份并报告错误。
 
@@ -148,13 +148,13 @@ New-Item -ItemType Directory -Path (Join-Path $work "data") -Force
 Copy-Item .\data\assistant.sqlite (Join-Path $work "data\assistant.sqlite") -Force
 $itemsBackup = Join-Path $work "items-backup.txt"
 python .\assistant.py export-items-backup --output $itemsBackup
-$appVersion = (python .\assistant.py --version) -replace "^DairyAssistant\s+", ""
+$appVersion = (python .\assistant.py --version) -replace "^DailyAssistant\s+", ""
 if (-not $appVersion) {
   throw "无法从 assistant.py 读取应用版本号"
 }
 $itemsText = Get-Content -Raw -Encoding UTF8 -Path $itemsBackup
-$begin = "BEGIN_DAIRY_ASSISTANT_ITEMS_BACKUP_JSON"
-$end = "END_DAIRY_ASSISTANT_ITEMS_BACKUP_JSON"
+$begin = "BEGIN_DAILY_ASSISTANT_ITEMS_BACKUP_JSON"
+$end = "END_DAILY_ASSISTANT_ITEMS_BACKUP_JSON"
 $start = $itemsText.IndexOf($begin)
 $finish = $itemsText.IndexOf($end)
 if ($start -lt 0 -or $finish -lt 0 -or $finish -le $start) {
@@ -167,7 +167,7 @@ if (-not $itemsPayload.metadata.version) {
   throw "无法从 items-backup.txt 读取事项文本备份版本号"
 }
 $manifest = @{
-  app = "DairyAssistant"
+  app = "DailyAssistant"
   app_version = $appVersion
   items_backup_version = $itemsPayload.metadata.version
   created_at = (Get-Date).ToString("yyyy-MM-ddTHH:mm:sszzz")
@@ -210,7 +210,7 @@ Remove-Item $work -Recurse -Force
 校验内容：
 
 1. 备份中存在 `manifest.json`；
-2. `manifest.json` 的 `app` 为 `DairyAssistant`；
+2. `manifest.json` 的 `app` 为 `DailyAssistant`；
 3. 备份中存在 `data/assistant.sqlite`；
 4. 备份中存在 `items-backup.txt`。
 

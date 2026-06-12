@@ -1,12 +1,12 @@
-# DairyAssistant
+# DailyAssistant
 
-DairyAssistant 是一个本地运行的任务和日程助手。它使用 LLM 理解自然语言输入，使用 `assistant.py` 校验、写入和查询数据，并使用 SQLite 在本机保存任务、日程和待确认事项。
+DailyAssistant 是一个本地运行的任务和日程助手。它使用 LLM 理解自然语言输入，使用 `assistant.py` 校验、写入和查询数据，并使用 SQLite 在本机保存任务、日程和待确认事项。
 
 本项目适合用来记录和查询个人安排，例如待办事项、会议、课程、预约、考试、截止日期，以及需要之后再确认的信息。
 
 ## 当前版本
 
-- 应用版本：`DairyAssistant 1.0.5`
+- 应用版本：`DailyAssistant 1.1.0`
 - 版本来源：`assistant.py` 中的 `APP_VERSION`
 - 查看版本：
 
@@ -40,7 +40,7 @@ python .\assistant.py --version
     |-- install.md
     |-- backup.md
     |-- update.md
-    `-- dairy-work.md
+    `-- daily-work.md
 ```
 
 其中：
@@ -49,7 +49,7 @@ python .\assistant.py --version
 - `schema.sql` 定义 SQLite 数据库结构。
 - `data/assistant.sqlite` 是本地数据库文件。
 - `extensions/` 保存扩展能力说明。
-- `AGENTS.md` 保存 Codex 在本目录内工作的项目规则。
+- 本项目依赖大语言模型代理作为入口，`AGENTS.md` 必须放在项目根目录文件夹下，用于保存代理在本目录内工作的项目规则。
 
 ## 运行环境
 
@@ -62,6 +62,8 @@ python .\assistant.py --version
 当前项目不要求安装第三方 Python 包，也不要求单独安装 SQLite 命令行工具、Node.js 或 MCP。
 
 ## 安装与初始化
+
+如果当前是大语言模型在自动安装，应先确认本项目根目录文件夹下存在 `AGENTS.md`，然后直接在本项目根目录文件夹中执行安装和初始化；安装过程中产生的临时过程文件应统一放在 `download/` 文件夹中，并在安装完成后清除。
 
 在项目根目录运行：
 
@@ -209,4 +211,4 @@ extensions/catalog.md
 - `install`：检查和初始化本地运行环境。
 - `backup`：备份和恢复用户数据。
 - `update`：从 GitHub 仓库检查并应用程序更新。
-- `dairy-work`：生成每日任务清单自动化。
+- `daily-work`：生成每日任务清单自动化。

@@ -29,7 +29,7 @@ APP_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = APP_DIR / "data" / "assistant.sqlite"
 SCHEMA_PATH = APP_DIR / "schema.sql"
 LOCAL_TZ = timezone(timedelta(hours=8))
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.1.0"
 
 VALID_ITEM_TYPES = {"task", "event"}
 VALID_ITEM_STATUS = {"active", "completed", "cancelled", "needs_review"}
@@ -38,10 +38,10 @@ VALID_PARSE_STATUS = {"parsed", "needs_review", "ignored", "failed"}
 VALID_RELATIONS = {"prepares_for", "related_to", "duplicate_of"}
 VALID_REVIEW_STATUS = {"open", "resolved", "dismissed"}
 QUERY_REVIEW_STATUS = {"active": "open", "completed": "resolved", "cancelled": "dismissed"}
-ITEMS_BACKUP_FORMAT = "dairyassistant-items-backup"
+ITEMS_BACKUP_FORMAT = "dailyassistant-items-backup"
 ITEMS_BACKUP_VERSION = 1
-ITEMS_BACKUP_BEGIN = "BEGIN_DAIRY_ASSISTANT_ITEMS_BACKUP_JSON"
-ITEMS_BACKUP_END = "END_DAIRY_ASSISTANT_ITEMS_BACKUP_JSON"
+ITEMS_BACKUP_BEGIN = "BEGIN_DAILY_ASSISTANT_ITEMS_BACKUP_JSON"
+ITEMS_BACKUP_END = "END_DAILY_ASSISTANT_ITEMS_BACKUP_JSON"
 ITEMS_BACKUP_TABLE_COLUMNS = {
     "records": (
         "id",
@@ -1200,7 +1200,7 @@ def format_items_backup_text(payload: dict[str, Any]) -> str:
     tables = payload["data"]["tables"]
     summary = summarize_backup_payload(payload)
     lines = [
-        "# DairyAssistant items-backup.txt",
+        "# DailyAssistant items-backup.txt",
         "",
         "本文件是事项备份文本副本，供备份校验和数据库恢复失败时重建使用。",
         "请不要手工修改结构化 JSON 区块。",
@@ -1398,8 +1398,8 @@ def restore_items_from_backup(config: AppConfig, input_path: str) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="DairyAssistant local SQLite assistant")
-    parser.add_argument("--version", action="version", version=f"DairyAssistant {APP_VERSION}")
+    parser = argparse.ArgumentParser(description="DailyAssistant local SQLite assistant")
+    parser.add_argument("--version", action="version", version=f"DailyAssistant {APP_VERSION}")
     parser.add_argument("--db", default=str(DEFAULT_DB), help="Path to SQLite database.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 

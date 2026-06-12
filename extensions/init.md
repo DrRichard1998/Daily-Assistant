@@ -8,9 +8,10 @@
 
 - `assistant.py` 返回 `status: needs_init`；
 - `assistant.py doctor` 返回 `status: environment_error`；
-- `assistant.py` 命令自身无法运行；
 - 用户要求安装、初始化、配置环境或排查运行环境；
 - 当前确认 `data/assistant.sqlite` 不存在。
+
+如果 `assistant.py` 命令自身无法运行，必须先读取错误文本判断原因。若原因是 `python` 命令不存在、Python 未加入 PATH、需要使用完整解释器路径，或沙箱需要授权执行本机 Python，则不要展示第 3 节的数据库缺失固定文案；应直接转入 `extensions/install.md` 的 Python 调用方式和环境排错流程。
 
 进入本扩展后，不继续处理用户原始请求。无论用户原始请求是记录、查询、完成、取消、维护、聊天还是其他扩展请求，都先完成本扩展的说明和确认流程。
 
@@ -43,7 +44,7 @@
 
 当前本地数据库不存在，本项目还没有开始使用，或数据库已被删除。
 
-DairyAssistant 是一个本地运行的任务和日程助理。它采用 LLM + Python + SQLite 的架构：LLM 负责理解你的输入，Python 程序负责校验、写入和查询，SQLite 负责在本机保存任务、日程和待确认事项。
+DailyAssistant 是一个本地运行的任务和日程助理。它采用 LLM + Python + SQLite 的架构：LLM 负责理解你的输入，Python 程序负责校验、写入和查询，SQLite 负责在本机保存任务、日程和待确认事项。
 
 本项目最大的优势是你不需要学习命令，也不需要把事情写成固定格式。你可以直接用自然语言输入，也可以发送语音或图片；例如，把邮件、通知、聊天记录或截图发给它，它会先转换和理解内容，再整理成任务、日程或待确认事项。
 

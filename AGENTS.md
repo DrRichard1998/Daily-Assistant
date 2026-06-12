@@ -1,4 +1,4 @@
-# DairyAssistant 工作规则
+# DailyAssistant 工作规则
 
 本目录使用 SQLite 作为事实来源。处理本目录内的记录、查询、完成和维护请求时，只遵守本文件；不要回到父目录，也不要扫描无关目录。
 
@@ -259,10 +259,10 @@ extensions/init.md
 
 ### 13.3 环境异常
 
-如果用户要求安装、初始化、配置环境或排查运行环境，先运行：
+如果用户要求安装、初始化、配置环境或排查运行环境，先按 `extensions/install.md` 的解释器选择流程确定可用 Python 调用方式，再运行：
 
 ```powershell
-python .\assistant.py doctor
+& $DA_PY @DA_PY_ARGS .\assistant.py doctor
 ```
 
 如果 `doctor` 返回：
@@ -273,13 +273,17 @@ python .\assistant.py doctor
 }
 ```
 
-或者 `python .\assistant.py doctor` 自身无法运行，不要直接进入 `extensions/install.md`。仍然必须先读取并执行：
+则读取并执行：
 
 ```text
-extensions/init.md
+extensions/install.md
 ```
 
-`extensions/init.md` 是首次启动、数据库缺失和环境异常时的统一入口。只有在用户确认开始使用本项目后，才按 `extensions/init.md` 的流程转入 `extensions/install.md`。
+如果 `assistant.py doctor` 自身无法运行，必须先读取错误文本判断原因：
+
+1. 若原因是 `python` 命令不存在、Python 未加入 PATH、需要使用完整解释器路径，或沙箱需要授权执行本机 Python，则直接读取并执行 `extensions/install.md`，不要展示数据库不存在或初始化数据库的文案。
+2. 若 `assistant.py` 已经成功启动并明确返回 `status: needs_init`，才按第 13.2 节进入 `extensions/init.md`。
+3. 若用户明确是在首次启用本项目且需要初始化数据库，可以进入 `extensions/init.md` 的确认流程；用户确认后再转入 `extensions/install.md`。
 
 ### 13.4 编码
 

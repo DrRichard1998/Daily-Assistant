@@ -2,7 +2,7 @@
 
 ## 1. 目的
 
-本扩展用于从固定 GitHub 仓库下载新版 DairyAssistant，并用“重建式升级”替代原地数据库迁移。
+本扩展用于从固定 GitHub 仓库下载新版 DailyAssistant，并用“重建式升级”替代原地数据库迁移。
 
 默认更新源：
 
@@ -36,7 +36,7 @@ main
 
 1. 在线更新程序；
 2. 检查新版本；
-3. 从 GitHub 更新 DairyAssistant；
+3. 从 GitHub 更新 DailyAssistant；
 4. 从 `DrRichard1998/Daily-Assistant` 更新；
 5. 绑定或修改程序更新源；
 6. 排查更新失败、版本不一致或远程仓库配置问题。

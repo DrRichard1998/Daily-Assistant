@@ -1,4 +1,4 @@
-# dairy-work
+# daily-work
 
 ## 目的
 
