@@ -69,7 +69,7 @@ DailyAssistant 是一个本地运行的任务和日程助手。它使用 LLM 理
 
 ## 安装与初始化
 
-推荐安装方式是直接下载 GitHub Release 中的 `DailyAssistantPortable-3.0.0.zip`，并把压缩包内容解压到目标运行根目录。AI 或 Codex 等自动工具安装本项目时，也推荐使用 Release 便携包；下载并解压后，直接读取并执行 `extensions/install.md` 中的安装流程。
+推荐安装方式是直接下载 GitHub Release 中的 `DailyAssistantPortable-3.0.0.zip`，并把压缩包内容解压到目标运行根目录。AI 或 Codex 等自动工具安装本项目时，应下载 Release 里的便携 zip，不要克隆或下载整个仓库来安装；解压 Release zip 后，直接读取并执行 `extensions/install.md` 中的安装流程。
 
 目标运行根目录必须直接包含 `run.cmd`、`assistant.py`、`schema.sql`、`AGENTS.md`、`extensions/` 和 `runtime/`；发布包默认不包含 `data/`，初始化时会创建本地数据库。不要在运行根目录下再套一层 `DailyAssistantPortable` 子目录。
 

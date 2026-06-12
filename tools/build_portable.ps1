@@ -64,13 +64,12 @@ function Get-PythonMinorTag {
   return "python$($parts[0])$($parts[1])"
 }
 
-function Remove-PortableDatabaseFiles {
+function Remove-PortableDataDirectory {
   param([Parameter(Mandatory = $true)][string]$DataRoot)
 
   Assert-UnderPath -Path $DataRoot -Root $packageRoot
   if (Test-Path -LiteralPath $DataRoot -PathType Container) {
-    Get-ChildItem -LiteralPath $DataRoot -Force -Filter "assistant.sqlite*" |
-      Remove-Item -Force
+    Remove-Item -LiteralPath $DataRoot -Recurse -Force
   }
 }
 
@@ -165,8 +164,8 @@ if (-not $SkipVerify) {
 }
 
 if (-not $IncludeDatabase) {
-  Remove-PortableDatabaseFiles -DataRoot (Join-Path $packageRoot "data")
-  Write-Host "Portable database files were not included."
+  Remove-PortableDataDirectory -DataRoot (Join-Path $packageRoot "data")
+  Write-Host "Portable data directory was not included."
 }
 
 Write-Host "Portable package created:"
