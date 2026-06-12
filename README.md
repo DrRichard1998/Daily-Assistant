@@ -6,7 +6,7 @@ DairyAssistant 是一个本地运行的任务和日程助手。它使用 LLM 理
 
 ## 当前版本
 
-- 应用版本：`DairyAssistant 1.0.0`
+- 应用版本：`DairyAssistant 1.0.5`
 - 版本来源：`assistant.py` 中的 `APP_VERSION`
 - 查看版本：
 

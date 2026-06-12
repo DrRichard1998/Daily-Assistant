@@ -29,7 +29,7 @@ APP_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = APP_DIR / "data" / "assistant.sqlite"
 SCHEMA_PATH = APP_DIR / "schema.sql"
 LOCAL_TZ = timezone(timedelta(hours=8))
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.5"
 
 VALID_ITEM_TYPES = {"task", "event"}
 VALID_ITEM_STATUS = {"active", "completed", "cancelled", "needs_review"}
