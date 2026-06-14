@@ -345,8 +345,8 @@ def needs_init_payload(db_path: Path) -> dict[str, Any]:
         "status": "needs_init",
         "message": "Local database is not initialized.",
         "db": str(db_path),
-        "next_extension": "extensions/init.md",
-        "next_action": "Read extensions/init.md and ask the user whether to start using this project.",
+        "next_extension": "extensions/install.md",
+        "next_action": "Read extensions/install.md and ask the user whether to start using this project.",
     }
 
 

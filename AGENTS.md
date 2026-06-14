@@ -369,10 +369,10 @@ type, title, content, status, confidence, due_at, start_at, end_at, all_day, pro
 说明本项目处于未初始化状态。无论用户输入属于记录、查询、完成、维护、聊天或扩展请求，后续都必须先读取并执行：
 
 ```text
-extensions/init.md
+extensions/install.md
 ```
 
-此时不要进入其他意图路径，不要直接运行 `.\run.cmd init`，也不要写入数据库。只有用户确认开始使用本项目后，才按 `extensions/init.md` 转入 `extensions/install.md`。
+此时不要进入其他意图路径，不要直接运行 `.\run.cmd init`，也不要写入数据库。`extensions/install.md` 会先展示介绍文案并确认用户意图，确认后才进入安装和初始化流程。
 
 ### 14.4 环境异常
 
@@ -399,8 +399,8 @@ extensions/install.md
 如果 `.\run.cmd doctor` 自身无法运行，必须先读取错误文本判断原因：
 
 1. 若原因是 `runtime\python\python.exe` 缺失、`run.cmd` 缺失、便携包未构建或运行根目录不完整，则直接读取并执行 `extensions/install.md`，不要展示数据库不存在或初始化数据库的文案。
-2. 若 `assistant.py` 已经通过 `run.cmd` 成功启动并明确返回 `status: needs_init`，才按第 14.3 节进入 `extensions/init.md`。
-3. 若用户明确是在首次启用本项目且需要初始化数据库，可以进入 `extensions/init.md` 的确认流程；用户确认后再转入 `extensions/install.md`。
+2. 若 `assistant.py` 已经通过 `run.cmd` 成功启动并明确返回 `status: needs_init`，才按第 14.3 节进入 `extensions/install.md`。
+3. 若用户明确是在首次启用本项目且需要初始化数据库，可以进入 `extensions/install.md` 的确认流程。
 
 ### 14.5 编码
 
